@@ -1,0 +1,132 @@
+// CareerForge AI — Prisma schema
+// Postgres datasource. Run `npx prisma migrate dev` after setting DATABASE_URL.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum InterviewFocus {
+  TECHNICAL
+  BEHAVIORAL
+  HR
+  MIXED
+}
+
+enum InterviewStatus {
+  DRAFT
+  IN_PROGRESS
+  COMPLETED
+}
+
+enum QuestionType {
+  TECHNICAL
+  BEHAVIORAL
+  HR
+  SYSTEM_DESIGN
+}
+
+enum Difficulty {
+  EASY
+  MEDIUM
+  HARD
+}
+
+model User {
+  id        String   @id @default(cuid())
+  clerkId   String   @unique
+  email     String   @unique
+  firstName String?
+  lastName  String?
+  imageUrl  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  resumes    Resume[]
+  interviews Interview[]
+}
+
+model Resume {
+  id        String   @id @default(cuid())
+  userId    String
+  fileName  String
+  fileType  String
+  rawText   String   @db.Text
+  // Structured extraction { skills, education, experience, projects, summary, seniority }
+  parsed    Json?
+  isPrimary Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  interviews Interview[]
+
+  @@index([userId])
+}
+
+model Interview {
+  id           String          @id @default(cuid())
+  userId       String
+  resumeId     String?
+  title        String
+  targetRole   String
+  seniority    String          @default("Entry")
+  focus        InterviewFocus  @default(MIXED)
+  status       InterviewStatus @default(DRAFT)
+  overallScore Int? // 0-100, set when completed
+  summary      String?         @db.Text
+  createdAt    DateTime        @default(now())
+  completedAt  DateTime?
+
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  resume    Resume?    @relation(fields: [resumeId], references: [id], onDelete: SetNull)
+  questions Question[]
+
+  @@index([userId])
+  @@index([status])
+}
+
+model Question {
+  id          String       @id @default(cuid())
+  interviewId String
+  order       Int
+  type        QuestionType
+  category    String // e.g. "React", "Data Structures", "Leadership"
+  text        String       @db.Text
+  difficulty  Difficulty   @default(MEDIUM)
+  rationale   String?      @db.Text // why this question was asked (from resume)
+
+  interview Interview @relation(fields: [interviewId], references: [id], onDelete: Cascade)
+  answer    Answer?
+
+  @@index([interviewId])
+}
+
+model Answer {
+  id         String   @id @default(cuid())
+  questionId String   @unique
+  text       String   @db.Text
+  createdAt  DateTime @default(now())
+
+  question   Question    @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  evaluation Evaluation?
+}
+
+model Evaluation {
+  id           String   @id @default(cuid())
+  answerId     String   @unique
+  score        Int // 0-100 overall for this answer
+  correctness  Int // 0-100
+  communication Int // 0-100
+  depth        Int // 0-100
+  strengths    Json // string[]
+  improvements Json // string[]
+  feedback     String   @db.Text
+  modelAnswer  String?  @db.Text
+  createdAt    DateTime @default(now())
+
+  answer Answer @relation(fields: [answerId], references: [id], onDelete: Cascade)
+}
