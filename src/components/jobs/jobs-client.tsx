@@ -24,24 +24,47 @@ import type { JobCardData } from "@/lib/jobs/service";
 type FocusHint = { type?: string; remoteOnly?: boolean; search?: string };
 
 export function JobsClient({
-  initialJobs,
   hasResume,
   jsearchReady,
 }: {
-  initialJobs: JobCardData[];
   hasResume: boolean;
   jsearchReady: boolean;
 }) {
-  const [jobs, setJobs] = React.useState<JobCardData[]>(initialJobs);
+  const [jobs, setJobs] = React.useState<JobCardData[]>([]);
+  const [initialLoading, setInitialLoading] = React.useState(true);
   const [loading, setLoading] = React.useState(false);
   const [type, setType] = React.useState("ALL");
   const [remoteOnly, setRemoteOnly] = React.useState(false);
   const [q, setQ] = React.useState("");
   // If a resume exists but no matches are in yet, the background pre-warm
   // (kicked off at upload time) is likely still running — poll for it.
-  const [preparing, setPreparing] = React.useState(
-    () => hasResume && initialJobs.length === 0,
-  );
+  const [preparing, setPreparing] = React.useState(false);
+
+  // Load existing matches on mount (client-side) so the page shell — header,
+  // search box and filters — renders instantly without waiting on this.
+  React.useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      let loaded: JobCardData[] = [];
+      try {
+        const res = await fetch("/api/jobs");
+        if (res.ok) {
+          const data = await res.json();
+          if (Array.isArray(data.jobs)) loaded = data.jobs;
+        }
+      } catch {
+        // ignore — show empty/preparing state below
+      }
+      if (cancelled) return;
+      setJobs(loaded);
+      setInitialLoading(false);
+      // No matches yet but a resume exists → the pre-warm may still be running.
+      if (loaded.length === 0 && hasResume) setPreparing(true);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [hasResume]);
 
   React.useEffect(() => {
     if (!preparing) return;
@@ -243,9 +266,9 @@ export function JobsClient({
         <Button
           variant="gradient"
           onClick={() => run(jobs.length > 0)}
-          disabled={loading || preparing}
+          disabled={loading || preparing || initialLoading}
         >
-          {loading || preparing ? (
+          {loading || preparing || initialLoading ? (
             <>
               <Loader2 className="size-4 animate-spin" /> Finding…
             </>
@@ -259,13 +282,15 @@ export function JobsClient({
       </div>
 
       {/* Results */}
-      {preparing || loading ? (
+      {initialLoading || preparing || loading ? (
         <>
           <p className="mb-3 flex items-center gap-2 text-sm text-muted-foreground">
             <Loader2 className="size-4 animate-spin text-primary" />
-            {preparing
-              ? "Finding jobs that match your resume…"
-              : "Matching the latest listings to your resume…"}
+            {initialLoading
+              ? "Loading your matches…"
+              : preparing
+                ? "Finding jobs that match your resume…"
+                : "Matching the latest listings to your resume…"}
           </p>
           <JobSkeletonGrid />
         </>
