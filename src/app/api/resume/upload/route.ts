@@ -1,4 +1,4 @@
-import { NextResponse, type NextRequest } from "next/server";
+import { NextResponse, after, type NextRequest } from "next/server";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import {
@@ -7,6 +7,7 @@ import {
   ACCEPTED_RESUME_TYPES,
 } from "@/lib/resume";
 import { parseResume } from "@/lib/ai/parse-resume";
+import { getOrCreatePreferences, runJobMatch } from "@/lib/jobs/service";
 import { apiError, handleApiError } from "@/lib/api";
 
 export const runtime = "nodejs";
@@ -61,6 +62,23 @@ export async function POST(req: NextRequest) {
         parsed,
         isPrimary: existingCount === 0,
       },
+    });
+
+    // Pre-warm the Job Finder in the background: fetch + match jobs against
+    // this resume AFTER the response is sent, so results are ready (or warming)
+    // by the time the user opens the Job Finder. Doesn't delay the upload.
+    after(async () => {
+      try {
+        const prefs = await getOrCreatePreferences(user.id);
+        await runJobMatch({
+          userId: user.id,
+          resumeParsed: parsed,
+          prefs,
+          force: false,
+        });
+      } catch (err) {
+        console.error("Background job pre-warm failed:", err);
+      }
     });
 
     return NextResponse.json({

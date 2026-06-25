@@ -35,6 +35,41 @@ export function JobsClient({
   const [type, setType] = React.useState("ALL");
   const [remoteOnly, setRemoteOnly] = React.useState(false);
   const [q, setQ] = React.useState("");
+  // If a resume exists but no matches are in yet, the background pre-warm
+  // (kicked off at upload time) is likely still running — poll for it.
+  const [preparing, setPreparing] = React.useState(
+    () => hasResume && initialJobs.length === 0,
+  );
+
+  React.useEffect(() => {
+    if (!preparing) return;
+    let cancelled = false;
+    let attempts = 0;
+    const poll = async () => {
+      if (cancelled) return;
+      attempts += 1;
+      try {
+        const res = await fetch("/api/jobs");
+        const data = await res.json();
+        if (!cancelled && Array.isArray(data.jobs) && data.jobs.length > 0) {
+          setJobs(data.jobs);
+          setPreparing(false);
+          return;
+        }
+      } catch {
+        // ignore — try again
+      }
+      if (!cancelled) {
+        if (attempts >= 8) setPreparing(false);
+        else setTimeout(poll, 3000);
+      }
+    };
+    const id = setTimeout(poll, 2500);
+    return () => {
+      cancelled = true;
+      clearTimeout(id);
+    };
+  }, [preparing]);
 
   async function run(force: boolean) {
     setLoading(true);
@@ -143,9 +178,9 @@ export function JobsClient({
         <Button
           variant="gradient"
           onClick={() => run(jobs.length > 0)}
-          disabled={loading}
+          disabled={loading || preparing}
         >
-          {loading ? (
+          {loading || preparing ? (
             <>
               <Loader2 className="size-4 animate-spin" /> Finding…
             </>
@@ -159,8 +194,16 @@ export function JobsClient({
       </div>
 
       {/* Results */}
-      {loading && jobs.length === 0 ? (
-        <JobSkeletonGrid />
+      {preparing || (loading && jobs.length === 0) ? (
+        <>
+          {preparing && (
+            <p className="mb-3 flex items-center gap-2 text-sm text-muted-foreground">
+              <Loader2 className="size-4 animate-spin text-primary" />
+              Finding jobs that match your resume…
+            </p>
+          )}
+          <JobSkeletonGrid />
+        </>
       ) : filtered.length > 0 ? (
         <>
           <p className="mb-3 text-sm text-muted-foreground">
