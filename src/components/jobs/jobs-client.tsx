@@ -23,6 +23,10 @@ import type { JobCardData } from "@/lib/jobs/service";
 
 type FocusHint = { type?: string; remoteOnly?: boolean; search?: string };
 
+// Session-level cache so navigating away and back reuses the already-loaded
+// jobs instead of re-fetching. Cleared on full page reload / closing the site.
+let jobsSessionCache: JobCardData[] | null = null;
+
 export function JobsClient({
   hasResume,
   jsearchReady,
@@ -30,8 +34,12 @@ export function JobsClient({
   hasResume: boolean;
   jsearchReady: boolean;
 }) {
-  const [jobs, setJobs] = React.useState<JobCardData[]>([]);
-  const [initialLoading, setInitialLoading] = React.useState(true);
+  const [jobs, setJobsState] = React.useState<JobCardData[]>(
+    () => jobsSessionCache ?? [],
+  );
+  const [initialLoading, setInitialLoading] = React.useState(
+    () => jobsSessionCache === null,
+  );
   const [loading, setLoading] = React.useState(false);
   const [type, setType] = React.useState("ALL");
   const [remoteOnly, setRemoteOnly] = React.useState(false);
@@ -40,9 +48,16 @@ export function JobsClient({
   // (kicked off at upload time) is likely still running — poll for it.
   const [preparing, setPreparing] = React.useState(false);
 
-  // Load existing matches on mount (client-side) so the page shell — header,
-  // search box and filters — renders instantly without waiting on this.
+  // Every jobs update also refreshes the session cache.
+  const setJobs = React.useCallback((next: JobCardData[]) => {
+    jobsSessionCache = next;
+    setJobsState(next);
+  }, []);
+
+  // Load matches once per session (client-side) so the shell renders instantly;
+  // on return navigation the cached list is reused — no reload.
   React.useEffect(() => {
+    if (jobsSessionCache !== null) return; // already loaded this session
     let cancelled = false;
     (async () => {
       let loaded: JobCardData[] = [];
@@ -64,7 +79,7 @@ export function JobsClient({
     return () => {
       cancelled = true;
     };
-  }, [hasResume]);
+  }, [hasResume, setJobs]);
 
   React.useEffect(() => {
     if (!preparing) return;
@@ -94,7 +109,7 @@ export function JobsClient({
       cancelled = true;
       clearTimeout(id);
     };
-  }, [preparing]);
+  }, [preparing, setJobs]);
 
   // Single predicate used for both the grid and the post-run toast count.
   const matchesFilter = React.useCallback(
