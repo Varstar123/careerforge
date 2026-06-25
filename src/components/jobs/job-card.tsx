@@ -10,6 +10,7 @@ import {
   Sparkles,
   Info,
 } from "lucide-react";
+import { formatDistanceToNow } from "date-fns";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -39,6 +40,15 @@ export function JobCard({ job }: { job: JobCardData }) {
   const deadlineLabel = job.deadline
     ? `Apply by ${formatDate(job.deadline)}`
     : "Open · Apply soon";
+
+  let postedLabel: string | null = null;
+  if (job.postedAt) {
+    try {
+      postedLabel = `${formatDistanceToNow(new Date(job.postedAt))} ago`;
+    } catch {
+      postedLabel = null;
+    }
+  }
 
   return (
     <Card className="flex h-full flex-col p-5">
@@ -79,6 +89,9 @@ export function JobCard({ job }: { job: JobCardData }) {
           <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
             <MapPin className="size-3" /> {job.location}
           </span>
+        )}
+        {postedLabel && (
+          <span className="text-xs text-muted-foreground">· {postedLabel}</span>
         )}
       </div>
 

@@ -11,6 +11,8 @@ import { ParsedResumeSchema, type ParsedResume } from "@/lib/types";
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24h
 const FORCE_COOLDOWN_MS = 60 * 60 * 1000; // min 1h between forced refetches
 const MAX_CANDIDATES = 24; // cap jobs sent to the matcher in one call
+const STALE_LISTING_MS = 14 * 24 * 60 * 60 * 1000; // not re-seen in 14d -> gone
+const MAX_LISTING_AGE_MS = 45 * 24 * 60 * 60 * 1000; // posted >45d ago -> expired
 
 export interface JobCardData {
   id: string; // job id
@@ -30,6 +32,25 @@ export interface JobCardData {
 
 function isFresh(lastFetchedAt: Date) {
   return Date.now() - lastFetchedAt.getTime() < CACHE_TTL_MS;
+}
+
+/**
+ * Purge listings that are over: past their deadline (when the source provides
+ * one), not re-seen in 14 days, or posted more than 45 days ago. Related
+ * JobMatch rows cascade-delete automatically. Returns how many were removed.
+ */
+export async function cleanupStaleJobs(): Promise<number> {
+  const now = Date.now();
+  const res = await prisma.jobListing.deleteMany({
+    where: {
+      OR: [
+        { deadline: { lt: new Date(now) } },
+        { updatedAt: { lt: new Date(now - STALE_LISTING_MS) } },
+        { postedAt: { lt: new Date(now - MAX_LISTING_AGE_MS) } },
+      ],
+    },
+  });
+  return res.count;
 }
 
 /**
@@ -178,6 +199,8 @@ export async function getUserJobs(
     where: {
       userId,
       job: {
+        // Hide listings whose deadline has already passed.
+        OR: [{ deadline: null }, { deadline: { gte: new Date() } }],
         ...(filters.jobType
           ? { employmentType: filters.jobType as JobListing["employmentType"] }
           : {}),

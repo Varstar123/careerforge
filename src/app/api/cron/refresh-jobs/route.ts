@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { ensureListings } from "@/lib/jobs/service";
+import { ensureListings, cleanupStaleJobs } from "@/lib/jobs/service";
 import { CURATED_QUERIES } from "@/lib/jobs/query-builder";
 import { jobsSourceReady } from "@/lib/jobs/sources";
 
@@ -25,9 +25,11 @@ export async function GET(req: NextRequest) {
 
   try {
     await ensureListings(CURATED_QUERIES, { force: true });
+    const removed = await cleanupStaleJobs();
     return NextResponse.json({
       ok: true,
       refreshed: CURATED_QUERIES.length,
+      removed,
       at: new Date().toISOString(),
     });
   } catch (err) {
