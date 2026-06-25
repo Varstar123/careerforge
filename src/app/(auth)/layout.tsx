@@ -1,12 +1,24 @@
+import { redirect } from "next/navigation";
+import { auth } from "@clerk/nextjs/server";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { Logo } from "@/components/logo";
+import { clerkConfigured } from "@/lib/env";
 
-export default function AuthLayout({
+export default async function AuthLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  // Already signed in? Bounce to the dashboard on the server, before Clerk's
+  // client widget loads. Otherwise an authenticated user lands on /sign-in,
+  // <SignIn> renders nothing while it redirects client-side, and they stare at
+  // an empty auth shell (just the logo + Home) for a beat. This kills that lag.
+  if (clerkConfigured) {
+    const { userId } = await auth();
+    if (userId) redirect("/dashboard");
+  }
+
   return (
     <div className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden px-4 py-12">
       {/* ambient background */}
