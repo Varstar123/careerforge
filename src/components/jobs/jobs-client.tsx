@@ -73,7 +73,25 @@ export function JobsClient({
     };
   }, [preparing]);
 
+  // Single predicate used for both the grid and the post-run toast count.
+  const matchesFilter = React.useCallback(
+    (j: JobCardData) => {
+      if (type !== "ALL" && j.employmentType !== type) return false;
+      if (remoteOnly && j.workMode !== "REMOTE") return false;
+      if (q) {
+        const hay = `${j.title} ${j.company} ${j.skills.join(" ")}`.toLowerCase();
+        if (!hay.includes(q.toLowerCase())) return false;
+      }
+      return true;
+    },
+    [type, remoteOnly, q],
+  );
+
+  const runningRef = React.useRef(false);
+
   async function run(force: boolean, focus?: FocusHint) {
+    if (runningRef.current) return; // never overlap runs (would pin the skeleton)
+    runningRef.current = true;
     setPreparing(false); // a manual run supersedes any background poll
     setLoading(true);
     try {
@@ -83,7 +101,7 @@ export function JobsClient({
         body: JSON.stringify({ force, focus }),
       });
       // The response may be a non-JSON error page (e.g. a timeout) — parse safely.
-      let data: { error?: string; matched?: number } = {};
+      let data: { error?: string } = {};
       try {
         data = await res.json();
       } catch {
@@ -95,44 +113,42 @@ export function JobsClient({
         );
       }
 
-      // Pull the freshly-ranked matches. Keep existing results if this hiccups
-      // so the grid never blanks out unexpectedly.
+      // Report what the user will actually SEE under the active filter, not the
+      // raw all-types match count (keeps the grid in sync).
+      let visible = 0;
       const jobsRes = await fetch("/api/jobs");
       if (jobsRes.ok) {
         const jobsData = await jobsRes.json();
-        if (Array.isArray(jobsData.jobs)) setJobs(jobsData.jobs);
+        if (Array.isArray(jobsData.jobs)) {
+          setJobs(jobsData.jobs);
+          visible = (jobsData.jobs as JobCardData[]).filter(matchesFilter).length;
+        }
       }
 
-      if ((data.matched ?? 0) === 0) {
-        toast("No matches yet", {
-          description: "Try refreshing later or broadening your preferences.",
+      if (visible === 0) {
+        toast("No matching jobs found", {
+          description:
+            "No live listings fit this filter right now. Try a broader filter.",
         });
       } else {
-        toast.success(`Matched ${data.matched} jobs to your resume`);
+        toast.success(`Found ${visible} matching ${visible === 1 ? "job" : "jobs"}`);
       }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Something went wrong");
     } finally {
       setLoading(false);
+      runningRef.current = false;
     }
   }
 
-  const filtered = jobs.filter((j) => {
-    if (type !== "ALL" && j.employmentType !== type) return false;
-    if (remoteOnly && j.workMode !== "REMOTE") return false;
-    if (q) {
-      const hay = `${j.title} ${j.company} ${j.skills.join(" ")}`.toLowerCase();
-      if (!hay.includes(q.toLowerCase())) return false;
-    }
-    return true;
-  });
+  const filtered = jobs.filter(matchesFilter);
 
   // When a discrete filter (type / remote) has no match in the cached results,
   // automatically re-fetch from the job boards FOR that filter — once per
   // distinct filter, so it can't loop.
   const autoFetchedRef = React.useRef("");
   React.useEffect(() => {
-    if (loading || preparing || jobs.length === 0) return;
+    if (loading || preparing || runningRef.current || jobs.length === 0) return;
     const hasDiscreteFilter = type !== "ALL" || remoteOnly;
     if (!hasDiscreteFilter || filtered.length > 0) return;
     const key = `${type}|${remoteOnly}`;
@@ -144,10 +160,14 @@ export function JobsClient({
     };
     const t = setTimeout(() => void run(true, focus), 0);
     return () => clearTimeout(t);
+    // `run` is intentionally excluded — it's recreated each render; including it
+    // would re-run this effect every render. The autoFetchedRef guard is enough.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [type, remoteOnly, filtered.length, jobs.length, loading, preparing]);
 
   function searchBoards() {
-    autoFetchedRef.current = ""; // allow a manual retry
+    // Manual retry. Do NOT clear autoFetchedRef — that would re-arm the auto
+    // effect into a loop; the in-flight guard already prevents overlap.
     void run(true, {
       type: type !== "ALL" ? type : undefined,
       remoteOnly: remoteOnly || undefined,

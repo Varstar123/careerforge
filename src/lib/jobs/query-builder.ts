@@ -90,14 +90,16 @@ export function buildQueries(
   const prefTypes = toJSearchTypes((prefs?.jobTypes as string[] | undefined) ?? []);
   const employmentTypes = prefTypes.length ? prefTypes : defaultTypesFor(level);
 
+  // A focused Internship filter searches internships ONLY (no full-time query
+  // to dilute the candidate pool); otherwise freshers still get one internship
+  // query seeded alongside their role queries.
+  const internshipOnly = focus?.type === "INTERNSHIP";
   const wantInternship =
-    level === "student" || level === "entry" || focus?.type === "INTERNSHIP";
+    level === "student" || level === "entry" || internshipOnly;
 
   const seen = new Set<string>();
   const queries: JobSearchQuery[] = [];
 
-  // Explicitly search internships when the user is a fresher OR is filtering
-  // by Internship — role-only queries return mostly full-time roles.
   if (wantInternship && roles[0]) {
     const role = roles[0];
     const parts = [role, "internship"];
@@ -120,11 +122,13 @@ export function buildQueries(
   }
 
   for (const role of roles) {
-    const queryKey = normalizeKey(role, location, remoteOnly, employmentTypes);
+    const types = internshipOnly ? ["INTERN"] : employmentTypes;
+    const queryStr = internshipOnly ? `${role} internship` : role;
+    const queryKey = normalizeKey(queryStr, location, remoteOnly, types);
     if (seen.has(queryKey)) continue;
     seen.add(queryKey);
 
-    const parts = [role];
+    const parts = internshipOnly ? [role, "internship"] : [role];
     if (location) parts.push(`in ${location}`);
     else if (remoteOnly) parts.push("remote");
 
@@ -134,7 +138,7 @@ export function buildQueries(
       role,
       location,
       remoteOnly,
-      employmentTypes,
+      employmentTypes: types,
     });
     if (queries.length >= max) break;
   }

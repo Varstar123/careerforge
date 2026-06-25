@@ -183,9 +183,24 @@ async function fetchAdzuna(q: JobSearchQuery): Promise<NormalizedJob[]> {
 export async function fetchJobsForQuery(
   q: JobSearchQuery,
 ): Promise<NormalizedJob[]> {
+  // Adzuna is the main internship source; make its absence/failure observable.
+  const adzunaOn = adzunaConfigured();
+  if (!adzunaOn && q.employmentTypes.includes("INTERN")) {
+    console.warn(
+      "Adzuna disabled (ADZUNA_APP_ID/KEY missing) — internship coverage will be ~0",
+    );
+  }
+
   const tasks = [fetchRemotive(q.query), fetchArbeitnow(q.role)];
-  if (adzunaConfigured()) tasks.push(fetchAdzuna(q));
+  if (adzunaOn) tasks.push(fetchAdzuna(q));
   const settled = await Promise.allSettled(tasks);
+
+  settled.forEach((r, i) => {
+    if (r.status === "rejected") {
+      const name = ["remotive", "arbeitnow", "adzuna"][i] ?? "source";
+      console.error(`Job source ${name} failed for "${q.query}":`, r.reason);
+    }
+  });
 
   const all = settled.flatMap((r) =>
     r.status === "fulfilled" ? r.value : [],
@@ -199,5 +214,16 @@ export async function fetchJobsForQuery(
     seen.add(job.externalId);
     deduped.push(job);
   }
+
+  // For internship-targeted queries, promote INTERNSHIP rows so they survive
+  // the downstream per-query slice (Remotive's non-intern rows come first).
+  if (q.employmentTypes.includes("INTERN")) {
+    deduped.sort(
+      (a, b) =>
+        Number(b.employmentType === "INTERNSHIP") -
+        Number(a.employmentType === "INTERNSHIP"),
+    );
+  }
+
   return deduped;
 }

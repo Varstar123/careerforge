@@ -151,10 +151,11 @@ export async function runJobMatch({
     maxQueries: focus ? 2 : 3,
   });
 
-  // Quota guard: even on a forced refresh, don't re-hit JSearch for a query
-  // fetched within the cooldown window (protects the free tier from spam).
+  // Quota guard: even on a forced refresh, don't re-hit the sources for a query
+  // fetched within the cooldown window — UNLESS this is a targeted (focus) run,
+  // which is user-initiated and needs fresh, filter-specific listings.
   let effectiveForce = force;
-  if (force) {
+  if (force && !focus) {
     const recent = await prisma.jobQuery.findFirst({
       where: {
         queryKey: { in: queries.map((q) => q.queryKey) },
@@ -166,8 +167,16 @@ export async function runJobMatch({
 
   await ensureListings(queries, { force: effectiveForce });
 
+  // When the user is filtering by a type (e.g. INTERNSHIP), only consider
+  // listings of that type as candidates — otherwise general full-time rows
+  // dilute internships out of the match window and the filter shows nothing.
   const candidates = await prisma.jobListing.findMany({
-    where: { queryKey: { in: queries.map((q) => q.queryKey) } },
+    where: {
+      queryKey: { in: queries.map((q) => q.queryKey) },
+      ...(focus?.type
+        ? { employmentType: focus.type as JobListing["employmentType"] }
+        : {}),
+    },
     orderBy: { postedAt: "desc" },
     take: MAX_CANDIDATES,
   });
