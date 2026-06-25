@@ -72,6 +72,7 @@ export function JobsClient({
   }, [preparing]);
 
   async function run(force: boolean) {
+    setPreparing(false); // a manual run supersedes any background poll
     setLoading(true);
     try {
       const res = await fetch("/api/jobs/run", {
@@ -82,9 +83,13 @@ export function JobsClient({
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Could not fetch jobs");
 
+      // Pull the freshly-ranked matches. Keep existing results if this hiccups
+      // so the grid never blanks out unexpectedly.
       const jobsRes = await fetch("/api/jobs");
-      const jobsData = await jobsRes.json();
-      setJobs(jobsData.jobs ?? []);
+      if (jobsRes.ok) {
+        const jobsData = await jobsRes.json();
+        if (Array.isArray(jobsData.jobs)) setJobs(jobsData.jobs);
+      }
 
       if ((data.matched ?? 0) === 0) {
         toast("No matches yet", {
@@ -194,14 +199,14 @@ export function JobsClient({
       </div>
 
       {/* Results */}
-      {preparing || (loading && jobs.length === 0) ? (
+      {preparing || loading ? (
         <>
-          {preparing && (
-            <p className="mb-3 flex items-center gap-2 text-sm text-muted-foreground">
-              <Loader2 className="size-4 animate-spin text-primary" />
-              Finding jobs that match your resume…
-            </p>
-          )}
+          <p className="mb-3 flex items-center gap-2 text-sm text-muted-foreground">
+            <Loader2 className="size-4 animate-spin text-primary" />
+            {preparing
+              ? "Finding jobs that match your resume…"
+              : "Matching the latest listings to your resume…"}
+          </p>
           <JobSkeletonGrid />
         </>
       ) : filtered.length > 0 ? (
