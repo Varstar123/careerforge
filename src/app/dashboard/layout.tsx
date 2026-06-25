@@ -1,10 +1,8 @@
-import { redirect } from "next/navigation";
-import { getOrCreateUser } from "@/lib/auth";
 import { clerkConfigured } from "@/lib/env";
 import { SetupNotice } from "@/components/setup-notice";
 import { DashboardShell } from "@/components/dashboard/dashboard-shell";
 
-export default async function DashboardLayout({
+export default function DashboardLayout({
   children,
 }: {
   children: React.ReactNode;
@@ -13,21 +11,12 @@ export default async function DashboardLayout({
     return <SetupNotice />;
   }
 
-  let user;
-  try {
-    user = await getOrCreateUser();
-  } catch {
-    // Auth is configured but the database isn't reachable / migrated.
-    return (
-      <SetupNotice
-        title="Database not ready"
-        reason="We couldn't reach your database to load your account."
-        dbError
-      />
-    );
-  }
-
-  if (!user) redirect("/sign-in");
-
+  // The layout is intentionally synchronous so the shell + the page's loading.tsx
+  // skeleton paint instantly on navigation. Auth is enforced upstream by the
+  // middleware (proxy.ts → auth.protect on /dashboard(.*)), and each page resolves
+  // the user under its own loading boundary, so there's no need to block the whole
+  // dashboard on a DB round trip here — that block is what left the previous page
+  // (e.g. the post-sign-in screen) frozen for a beat. DB failures are handled by
+  // the sibling error.tsx.
   return <DashboardShell>{children}</DashboardShell>;
 }

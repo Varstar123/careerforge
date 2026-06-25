@@ -1,7 +1,7 @@
-import { SignIn, ClerkLoading, ClerkLoaded } from "@clerk/nextjs";
-import { Loader2 } from "lucide-react";
+import { SignIn, ClerkLoading, ClerkLoaded, Show } from "@clerk/nextjs";
 import { clerkConfigured } from "@/lib/env";
 import { SetupNotice } from "@/components/setup-notice";
+import { AuthStatusCard } from "@/components/auth/auth-status-card";
 
 export const metadata = { title: "Sign in" };
 export const dynamic = "force-dynamic";
@@ -18,20 +18,25 @@ export default function SignInPage() {
   return (
     <div className="w-full max-w-sm">
       <ClerkLoading>
-        <div className="flex flex-col items-center justify-center gap-3 rounded-2xl border border-border bg-card py-20 shadow-xl">
-          <Loader2 className="size-6 animate-spin text-primary" />
-          <p className="text-sm text-muted-foreground">Loading sign-in…</p>
-        </div>
+        <AuthStatusCard label="Loading sign-in…" />
       </ClerkLoading>
       <ClerkLoaded>
-        <SignIn
-          appearance={{
-            elements: {
-              rootBox: "w-full max-w-sm",
-              card: "bg-card border border-border shadow-xl",
-            },
-          }}
-        />
+        {/* Once authenticated, the <SignIn> widget empties itself and redirects.
+            Show an intentional loader during that window instead of a blank card. */}
+        <Show when="signed-out">
+          <SignIn
+            fallbackRedirectUrl="/dashboard"
+            appearance={{
+              elements: {
+                rootBox: "w-full max-w-sm",
+                card: "bg-card border border-border shadow-xl",
+              },
+            }}
+          />
+        </Show>
+        <Show when="signed-in">
+          <AuthStatusCard label="Taking you to your dashboard…" />
+        </Show>
       </ClerkLoaded>
     </div>
   );
