@@ -73,53 +73,6 @@ async function fetchRemotive(query: string): Promise<NormalizedJob[]> {
 }
 
 // ── Arbeitnow ───────────────────────────────────────────────────────────
-interface ArbeitnowJob {
-  slug: string;
-  company_name: string;
-  title: string;
-  description?: string;
-  remote?: boolean;
-  url: string;
-  tags?: string[];
-  job_types?: string[];
-  location?: string;
-  created_at?: number;
-}
-
-async function fetchArbeitnow(role: string): Promise<NormalizedJob[]> {
-  const json = (await fetchJson(
-    "https://www.arbeitnow.com/api/job-board-api",
-  )) as { data?: ArbeitnowJob[] };
-
-  const terms = role
-    .toLowerCase()
-    .split(/\s+/)
-    .filter((w) => w.length > 2);
-
-  return (json.data ?? [])
-    .filter((j) => {
-      if (!j.url || !j.title) return false;
-      const hay = `${j.title} ${(j.tags ?? []).join(" ")}`.toLowerCase();
-      return terms.length === 0 || terms.some((t) => hay.includes(t));
-    })
-    .slice(0, 20)
-    .map((j) => ({
-      source: "arbeitnow",
-      externalId: `arbeitnow:${j.slug}`,
-      title: j.title,
-      company: j.company_name ?? "Unknown",
-      location: j.location || (j.remote ? "Remote" : null),
-      workMode: (j.remote ? "REMOTE" : "ONSITE") as NormalizedJob["workMode"],
-      employmentType: classifyEmployment(j.title, j.job_types?.[0]),
-      description: stripHtml(j.description ?? "").slice(0, 6000),
-      skills: Array.isArray(j.tags) ? j.tags.slice(0, 12) : [],
-      qualifications: [],
-      postedAt: j.created_at ? new Date(j.created_at * 1000) : null,
-      deadline: null,
-      applyUrl: j.url,
-    }));
-}
-
 // ── Adzuna (optional, broad aggregator incl. India) ─────────────────────
 interface AdzunaJob {
   id?: string;
@@ -289,10 +242,12 @@ export async function fetchJobsForQuery(
 ): Promise<NormalizedJob[]> {
   const adzunaOn = adzunaConfigured();
 
+  // Greenhouse = recognizable companies, Adzuna = India breadth, Remotive =
+  // remote. (Arbeitnow dropped — it flooded results with EU/German on-site
+  // roles irrelevant to the target audience.)
   const sources: { name: string; run: () => Promise<NormalizedJob[]> }[] = [
     { name: "greenhouse", run: () => fetchGreenhouse(q) },
     { name: "remotive", run: () => fetchRemotive(q.query) },
-    { name: "arbeitnow", run: () => fetchArbeitnow(q.role) },
   ];
   if (adzunaOn) sources.push({ name: "adzuna", run: () => fetchAdzuna(q) });
 
@@ -307,8 +262,11 @@ export async function fetchJobsForQuery(
     }
   });
 
+  // Cap each source's contribution so one source can't crowd the others out of
+  // the per-query slice (keeps a balanced mix across sources).
+  const PER_SOURCE = 9;
   const all = settled.flatMap((r) =>
-    r.status === "fulfilled" ? r.value : [],
+    r.status === "fulfilled" ? r.value.slice(0, PER_SOURCE) : [],
   );
 
   const seen = new Set<string>();
