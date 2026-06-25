@@ -40,3 +40,15 @@ export async function deleteInterview(interviewId: string) {
   revalidatePath("/dashboard/interview");
   revalidatePath("/dashboard");
 }
+
+/**
+ * Bust the cached Overview + interview list after an interview is created or
+ * completed through an API route. API routes can't invalidate the client Router
+ * Cache, and with the experimental `staleTimes` config those pages would
+ * otherwise keep showing a stale status (e.g. "In progress") for up to 30 min.
+ * Only marks paths stale — no data access — so no auth is required here.
+ */
+export async function revalidateInterviewViews() {
+  revalidatePath("/dashboard");
+  revalidatePath("/dashboard/interview");
+}

@@ -20,6 +20,7 @@ import {
   ResumeUploader,
   type UploadedResume,
 } from "@/components/interview/resume-uploader";
+import { revalidateInterviewViews } from "@/lib/actions";
 import { cn } from "@/lib/utils";
 
 export interface ResumeOption {
@@ -115,6 +116,8 @@ export function NewInterviewWizard({
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Failed to create interview");
+      // Bust the cached Overview + list so the new interview shows up there.
+      await revalidateInterviewViews();
       toast.success("Interview ready", {
         description: "Generating your questions…",
       });

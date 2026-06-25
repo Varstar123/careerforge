@@ -19,6 +19,7 @@ import {
   EvaluationCard,
   type EvaluationView,
 } from "@/components/interview/evaluation-card";
+import { revalidateInterviewViews } from "@/lib/actions";
 import { cn } from "@/lib/utils";
 
 export interface RunnerQuestion {
@@ -121,6 +122,9 @@ export function InterviewRunner({
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Could not complete interview");
+      // The API route can't bust the client Router Cache; without this the
+      // Overview + interview list keep showing this interview as "In progress".
+      await revalidateInterviewViews();
       toast.success("Interview complete!", {
         description: `Overall score: ${data.overallScore}/100`,
       });
