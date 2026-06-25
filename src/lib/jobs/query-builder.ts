@@ -49,14 +49,14 @@ interface BuildOpts {
 
 /**
  * Turn a parsed resume + saved preferences into a small set of normalized
- * search queries. Capped (default 3) to conserve the JSearch free quota.
+ * search queries. Capped (default 4); shared 24h cache keeps fetches light.
  */
 export function buildQueries(
   resume: ParsedResume | null,
   prefs: JobPreference | null,
   opts: BuildOpts = {},
 ): JobSearchQuery[] {
-  const max = opts.maxQueries ?? 3;
+  const max = opts.maxQueries ?? 4;
 
   const prefRoles = (prefs?.roles as string[] | undefined)?.filter(Boolean) ?? [];
   const resumeRoles = resume?.suggestedRoles?.filter(Boolean) ?? [];
@@ -74,6 +74,29 @@ export function buildQueries(
 
   const seen = new Set<string>();
   const queries: JobSearchQuery[] = [];
+
+  // Explicitly search internships for student/fresher levels — role-only
+  // queries return mostly full-time roles, leaving the Internship filter empty.
+  if ((level === "student" || level === "entry") && roles[0]) {
+    const role = roles[0];
+    const parts = [role, "internship"];
+    if (location) parts.push(`in ${location}`);
+    const queryKey = normalizeKey(
+      `${role} internship`,
+      location,
+      remoteOnly,
+      ["INTERN"],
+    );
+    seen.add(queryKey);
+    queries.push({
+      queryKey,
+      query: parts.join(" "),
+      role,
+      location,
+      remoteOnly,
+      employmentTypes: ["INTERN"],
+    });
+  }
 
   for (const role of roles) {
     const queryKey = normalizeKey(role, location, remoteOnly, employmentTypes);

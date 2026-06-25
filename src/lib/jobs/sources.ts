@@ -1,6 +1,6 @@
 import {
   type NormalizedJob,
-  mapEmploymentType,
+  classifyEmployment,
   stripHtml,
 } from "@/lib/jobs/types";
 import type { JobSearchQuery } from "@/lib/jobs/query-builder";
@@ -52,7 +52,7 @@ async function fetchRemotive(query: string): Promise<NormalizedJob[]> {
       company: j.company_name ?? "Unknown",
       location: j.candidate_required_location || "Remote",
       workMode: "REMOTE" as const,
-      employmentType: mapEmploymentType(j.job_type),
+      employmentType: classifyEmployment(j.title, j.job_type),
       description: stripHtml(j.description ?? "").slice(0, 6000),
       skills: Array.isArray(j.tags) ? j.tags.slice(0, 12) : [],
       qualifications: [],
@@ -102,7 +102,7 @@ async function fetchArbeitnow(role: string): Promise<NormalizedJob[]> {
       company: j.company_name ?? "Unknown",
       location: j.location || (j.remote ? "Remote" : null),
       workMode: (j.remote ? "REMOTE" : "ONSITE") as NormalizedJob["workMode"],
-      employmentType: mapEmploymentType(j.job_types?.[0]),
+      employmentType: classifyEmployment(j.title, j.job_types?.[0]),
       description: stripHtml(j.description ?? "").slice(0, 6000),
       skills: Array.isArray(j.tags) ? j.tags.slice(0, 12) : [],
       qualifications: [],
@@ -150,9 +150,10 @@ async function fetchAdzuna(q: JobSearchQuery): Promise<NormalizedJob[]> {
       const title = stripHtml(j.title ?? "");
       const text = stripHtml(j.description ?? "");
       const isRemote = /\bremote\b/i.test(`${title} ${text}`);
-      let employmentType = mapEmploymentType(j.contract_time);
-      if (/\bintern(ship)?\b/i.test(title)) employmentType = "INTERNSHIP";
-      else if (j.contract_type === "contract") employmentType = "CONTRACT";
+      let employmentType = classifyEmployment(title, j.contract_time);
+      if (employmentType !== "INTERNSHIP" && j.contract_type === "contract") {
+        employmentType = "CONTRACT";
+      }
 
       return {
         source: "adzuna",

@@ -39,6 +39,18 @@ export function mapEmploymentType(t?: string): EmploymentType {
   }
 }
 
+const INTERN_RE = /\bintern(ship)?s?\b/i;
+
+/**
+ * Classify a listing's employment type. The job TITLE wins for internships,
+ * since sources frequently tag intern roles as "full_time" — which would
+ * otherwise make the Internship filter return nothing.
+ */
+export function classifyEmployment(title: string, raw?: string): EmploymentType {
+  if (INTERN_RE.test(title)) return "INTERNSHIP";
+  return mapEmploymentType(raw);
+}
+
 /** Strip HTML tags + decode the common entities from a description blob. */
 export function stripHtml(html: string): string {
   return html
