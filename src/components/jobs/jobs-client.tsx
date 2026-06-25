@@ -21,6 +21,8 @@ import { JobSkeletonGrid } from "@/components/jobs/job-skeleton";
 import { cn } from "@/lib/utils";
 import type { JobCardData } from "@/lib/jobs/service";
 
+type FocusHint = { type?: string; remoteOnly?: boolean; search?: string };
+
 export function JobsClient({
   initialJobs,
   hasResume,
@@ -71,14 +73,14 @@ export function JobsClient({
     };
   }, [preparing]);
 
-  async function run(force: boolean) {
+  async function run(force: boolean, focus?: FocusHint) {
     setPreparing(false); // a manual run supersedes any background poll
     setLoading(true);
     try {
       const res = await fetch("/api/jobs/run", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ force }),
+        body: JSON.stringify({ force, focus }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Could not fetch jobs");
@@ -114,6 +116,34 @@ export function JobsClient({
     }
     return true;
   });
+
+  // When a discrete filter (type / remote) has no match in the cached results,
+  // automatically re-fetch from the job boards FOR that filter — once per
+  // distinct filter, so it can't loop.
+  const autoFetchedRef = React.useRef("");
+  React.useEffect(() => {
+    if (loading || preparing || jobs.length === 0) return;
+    const hasDiscreteFilter = type !== "ALL" || remoteOnly;
+    if (!hasDiscreteFilter || filtered.length > 0) return;
+    const key = `${type}|${remoteOnly}`;
+    if (autoFetchedRef.current === key) return;
+    autoFetchedRef.current = key;
+    const focus: FocusHint = {
+      type: type !== "ALL" ? type : undefined,
+      remoteOnly: remoteOnly || undefined,
+    };
+    const t = setTimeout(() => void run(true, focus), 0);
+    return () => clearTimeout(t);
+  }, [type, remoteOnly, filtered.length, jobs.length, loading, preparing]);
+
+  function searchBoards() {
+    autoFetchedRef.current = ""; // allow a manual retry
+    void run(true, {
+      type: type !== "ALL" ? type : undefined,
+      remoteOnly: remoteOnly || undefined,
+      search: q.trim() || undefined,
+    });
+  }
 
   // No resume yet → can't match.
   if (!hasResume) {
@@ -224,8 +254,13 @@ export function JobsClient({
       ) : jobs.length > 0 ? (
         <EmptyState
           icon={Search}
-          title="No jobs match these filters"
-          description="Try clearing the filters or refreshing for new listings."
+          title="No matching jobs in your current results"
+          description="None of your cached matches fit this filter. Search the job boards directly for it."
+          action={
+            <Button variant="gradient" onClick={searchBoards} disabled={loading}>
+              <Search className="size-4" /> Search job boards
+            </Button>
+          }
         />
       ) : (
         <EmptyState

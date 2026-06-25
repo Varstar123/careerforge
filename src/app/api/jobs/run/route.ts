@@ -13,6 +13,20 @@ export async function POST(req: NextRequest) {
     const body = await req.json().catch(() => ({}));
     const force = body?.force === true;
 
+    // Optional filter hint so an empty filter can re-fetch for that filter.
+    const focus =
+      body?.focus && typeof body.focus === "object"
+        ? {
+            type:
+              typeof body.focus.type === "string" ? body.focus.type : undefined,
+            remoteOnly: body.focus.remoteOnly === true ? true : undefined,
+            search:
+              typeof body.focus.search === "string"
+                ? body.focus.search.slice(0, 100)
+                : undefined,
+          }
+        : undefined;
+
     // Use the user's primary (most recent) resume as the matching profile.
     const resume = await prisma.resume.findFirst({
       where: { userId: user.id },
@@ -31,6 +45,7 @@ export async function POST(req: NextRequest) {
       resumeParsed: resume.parsed,
       prefs,
       force,
+      focus,
     });
 
     return NextResponse.json(result);

@@ -4,6 +4,7 @@ import { fetchJobsForQuery, jobsSourceReady } from "@/lib/jobs/sources";
 import {
   buildQueries,
   type JobSearchQuery,
+  type BuildFocus,
 } from "@/lib/jobs/query-builder";
 import { matchJobs, type MatchCandidate } from "@/lib/ai/match-jobs";
 import { ParsedResumeSchema, type ParsedResume } from "@/lib/types";
@@ -129,14 +130,16 @@ export async function runJobMatch({
   resumeParsed,
   prefs,
   force = false,
+  focus,
 }: {
   userId: string;
   resumeParsed: unknown;
   prefs: JobPreference | null;
   force?: boolean;
+  focus?: BuildFocus;
 }): Promise<{ matched: number; candidates: number }> {
   const resume = ParsedResumeSchema.parse(resumeParsed ?? {});
-  const queries = buildQueries(resume, prefs);
+  const queries = buildQueries(resume, prefs, { focus });
 
   // Quota guard: even on a forced refresh, don't re-hit JSearch for a query
   // fetched within the cooldown window (protects the free tier from spam).

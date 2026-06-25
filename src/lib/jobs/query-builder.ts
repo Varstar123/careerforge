@@ -43,13 +43,22 @@ export function normalizeKey(
   ].join("|");
 }
 
+export interface BuildFocus {
+  type?: string; // employment type the user is filtering by (e.g. INTERNSHIP)
+  remoteOnly?: boolean;
+  search?: string; // free-text the user searched
+}
+
 interface BuildOpts {
   maxQueries?: number;
+  focus?: BuildFocus;
 }
 
 /**
  * Turn a parsed resume + saved preferences into a small set of normalized
  * search queries. Capped (default 4); shared 24h cache keeps fetches light.
+ * `focus` biases the queries toward what the user is filtering for, so an
+ * empty filter result can trigger a targeted re-fetch from the sources.
  */
 export function buildQueries(
   resume: ParsedResume | null,
@@ -57,27 +66,39 @@ export function buildQueries(
   opts: BuildOpts = {},
 ): JobSearchQuery[] {
   const max = opts.maxQueries ?? 4;
+  const focus = opts.focus;
 
   const prefRoles = (prefs?.roles as string[] | undefined)?.filter(Boolean) ?? [];
   const resumeRoles = resume?.suggestedRoles?.filter(Boolean) ?? [];
-  const roles = (prefRoles.length ? prefRoles : resumeRoles).slice(0, max);
-  if (roles.length === 0) roles.push("entry level software");
+  const search = focus?.search?.trim();
+  let roles = prefRoles.length ? prefRoles : resumeRoles;
+  if (search) {
+    roles = [
+      search,
+      ...roles.filter((r) => r.toLowerCase() !== search.toLowerCase()),
+    ];
+  }
+  roles = roles.slice(0, max);
+  if (roles.length === 0) roles.push(search || "entry level software");
 
   const prefLocations =
     (prefs?.locations as string[] | undefined)?.filter(Boolean) ?? [];
   const location = prefLocations[0] ?? null;
 
-  const remoteOnly = prefs?.remoteOnly ?? false;
+  const remoteOnly = focus?.remoteOnly ?? prefs?.remoteOnly ?? false;
   const level = prefs?.experienceLevel ?? "entry";
   const prefTypes = toJSearchTypes((prefs?.jobTypes as string[] | undefined) ?? []);
   const employmentTypes = prefTypes.length ? prefTypes : defaultTypesFor(level);
 
+  const wantInternship =
+    level === "student" || level === "entry" || focus?.type === "INTERNSHIP";
+
   const seen = new Set<string>();
   const queries: JobSearchQuery[] = [];
 
-  // Explicitly search internships for student/fresher levels — role-only
-  // queries return mostly full-time roles, leaving the Internship filter empty.
-  if ((level === "student" || level === "entry") && roles[0]) {
+  // Explicitly search internships when the user is a fresher OR is filtering
+  // by Internship — role-only queries return mostly full-time roles.
+  if (wantInternship && roles[0]) {
     const role = roles[0];
     const parts = [role, "internship"];
     if (location) parts.push(`in ${location}`);
