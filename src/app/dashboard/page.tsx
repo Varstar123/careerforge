@@ -19,7 +19,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { StatCard } from "@/components/dashboard/stat-card";
-import { ScoreTrend } from "@/components/dashboard/score-trend";
+import { ScoreTrend } from "@/components/dashboard/score-trend-lazy";
 import { EmptyState } from "@/components/dashboard/empty-state";
 import { InterviewListItem } from "@/components/interview/interview-list-item";
 
