@@ -27,7 +27,26 @@ export async function parseResume(rawText: string): Promise<ParsedResume> {
   });
 
   const content = completion.choices[0]?.message?.content ?? "{}";
-  const json = JSON.parse(content);
-  // Zod fills defaults and coerces, so partial model output stays safe.
-  return ParsedResumeSchema.parse(json);
+
+  let json: unknown = {};
+  try {
+    json = JSON.parse(content);
+  } catch {
+    // Non-JSON output (rare with json_object mode) — fall back to defaults.
+    json = {};
+  }
+
+  // The schema is fully `.catch`-guarded, so this won't throw on odd output;
+  // safeParse is a final belt-and-suspenders guard.
+  const result = ParsedResumeSchema.safeParse(json);
+  const parsed = result.success ? result.data : ParsedResumeSchema.parse({});
+
+  // Drop entries the model left effectively empty.
+  parsed.education = parsed.education.filter((e) => e.institution.trim());
+  parsed.experience = parsed.experience.filter(
+    (e) => e.company.trim() || e.role.trim(),
+  );
+  parsed.projects = parsed.projects.filter((p) => p.name.trim());
+
+  return parsed;
 }

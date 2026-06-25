@@ -31,6 +31,21 @@ export async function evaluateAnswer(
   });
 
   const content = completion.choices[0]?.message?.content ?? "{}";
-  const json = JSON.parse(content);
-  return AnswerEvaluationSchema.parse(json);
+
+  let json: unknown = {};
+  try {
+    json = JSON.parse(content);
+  } catch {
+    json = {};
+  }
+
+  // Schema is `.catch`-guarded; safeParse is a final guard so a bad response
+  // never throws and breaks answer submission.
+  const result = AnswerEvaluationSchema.safeParse(json);
+  return result.success
+    ? result.data
+    : AnswerEvaluationSchema.parse({
+        feedback:
+          "We couldn't fully analyze this answer. Please try submitting again.",
+      });
 }

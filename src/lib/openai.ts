@@ -38,7 +38,14 @@ let _client: OpenAI | null = null;
 export function getOpenAI(): OpenAI {
   assertLLMConfigured();
   if (!_client) {
-    _client = new OpenAI({ apiKey, baseURL });
+    _client = new OpenAI({
+      apiKey,
+      baseURL,
+      // Auto-retry transient failures (429 rate limits, 5xx) before surfacing.
+      maxRetries: 3,
+      // Fail before the serverless function times out so we return a clean error.
+      timeout: 45_000,
+    });
   }
   return _client;
 }

@@ -1,7 +1,7 @@
 import { getOpenAI, MODELS } from "@/lib/openai";
 import { QUESTION_GEN_SYSTEM, questionGenUser } from "@/lib/prompts";
 import {
-  GeneratedQuestionSetSchema,
+  GeneratedQuestionSchema,
   type GeneratedQuestion,
   type ParsedResume,
 } from "@/lib/types";
@@ -47,7 +47,23 @@ export async function generateQuestions({
   });
 
   const content = completion.choices[0]?.message?.content ?? '{"questions":[]}';
-  const json = JSON.parse(content);
-  const parsed = GeneratedQuestionSetSchema.parse(json);
-  return parsed.questions.slice(0, count);
+
+  let json: unknown = {};
+  try {
+    json = JSON.parse(content);
+  } catch {
+    json = {};
+  }
+
+  // Keep only questions that validate; ignore malformed ones instead of failing.
+  const rawList = Array.isArray((json as { questions?: unknown })?.questions)
+    ? ((json as { questions: unknown[] }).questions)
+    : [];
+
+  const questions = rawList
+    .map((q) => GeneratedQuestionSchema.safeParse(q))
+    .filter((r) => r.success)
+    .map((r) => r.data);
+
+  return questions.slice(0, count);
 }

@@ -33,6 +33,11 @@ yarn-error.log*
 # env files (can opt-in for committing if needed)
 .env*
 
+# secrets / personal recovery codes — never commit
+recovery-codes.txt
+*recovery-codes*
+*.secret
+
 # vercel
 .vercel
 
