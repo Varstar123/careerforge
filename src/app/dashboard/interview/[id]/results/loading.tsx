@@ -1,10 +1,17 @@
+import Link from "next/link";
+import { ArrowLeft } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 
 export default function ResultsLoading() {
   return (
     <div className="mx-auto max-w-4xl">
-      <Skeleton className="mb-5 h-4 w-32" />
+      <Link
+        href="/dashboard/interview"
+        className="mb-5 inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
+      >
+        <ArrowLeft className="size-4" /> All interviews
+      </Link>
 
       {/* Summary header */}
       <Card className="p-6 sm:p-8">

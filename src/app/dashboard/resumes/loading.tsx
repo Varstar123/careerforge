@@ -1,11 +1,14 @@
-import { PageHeaderSkeleton } from "@/components/dashboard/skeletons";
+import { PageHeader } from "@/components/dashboard/page-header";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 
 export default function ResumesLoading() {
   return (
     <div className="mx-auto max-w-5xl">
-      <PageHeaderSkeleton />
+      <PageHeader
+        title="Your resumes"
+        description="Upload and manage the resumes that power your personalized interviews."
+      />
       {/* Uploader dropzone */}
       <Skeleton className="mb-6 h-32 w-full rounded-xl" />
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">

@@ -1,3 +1,6 @@
+import Link from "next/link";
+import { Plus } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ListItemsSkeleton } from "@/components/dashboard/skeletons";
@@ -5,13 +8,19 @@ import { ListItemsSkeleton } from "@/components/dashboard/skeletons";
 export default function DashboardLoading() {
   return (
     <div className="mx-auto max-w-6xl">
-      {/* Greeting */}
+      {/* Greeting — real heading + action render instantly */}
       <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="space-y-2.5">
-          <Skeleton className="h-8 w-64" />
-          <Skeleton className="h-4 w-80 max-w-full" />
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">
+            Welcome back 👋
+          </h1>
+          <Skeleton className="mt-2 h-4 w-80 max-w-full" />
         </div>
-        <Skeleton className="h-10 w-36 rounded-lg" />
+        <Button variant="gradient" asChild>
+          <Link href="/dashboard/interview/new">
+            <Plus className="size-4" /> New interview
+          </Link>
+        </Button>
       </div>
 
       {/* Stats */}

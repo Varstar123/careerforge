@@ -1,11 +1,14 @@
-import { PageHeaderSkeleton } from "@/components/dashboard/skeletons";
+import { PageHeader } from "@/components/dashboard/page-header";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 
 export default function NewInterviewLoading() {
   return (
     <div className="mx-auto max-w-3xl">
-      <PageHeaderSkeleton />
+      <PageHeader
+        title="New mock interview"
+        description="Pick a resume, set your target role, and we'll generate a tailored interview in seconds."
+      />
       <Card className="space-y-6 p-6">
         <div className="space-y-2">
           <Skeleton className="h-4 w-32" />
