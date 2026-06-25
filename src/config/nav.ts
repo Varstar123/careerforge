@@ -2,7 +2,7 @@ import {
   LayoutDashboard,
   MessagesSquare,
   Gauge,
-  Compass,
+  Briefcase,
   Rocket,
   FileText,
   type LucideIcon,
@@ -20,6 +20,6 @@ export const DASHBOARD_NAV: NavItem[] = [
   { label: "Interview Coach", href: "/dashboard/interview", icon: MessagesSquare },
   { label: "Resumes", href: "/dashboard/resumes", icon: FileText },
   { label: "Readiness", href: "/dashboard/readiness", icon: Gauge, badge: "soon" },
-  { label: "Career Mentor", href: "/dashboard/mentor", icon: Compass, badge: "soon" },
+  { label: "Job Finder", href: "/dashboard/mentor", icon: Briefcase },
   { label: "Startup Builder", href: "/dashboard/startup", icon: Rocket, badge: "soon" },
 ];

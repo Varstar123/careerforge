@@ -1,7 +1,7 @@
 import {
   MessagesSquare,
   Gauge,
-  Compass,
+  Briefcase,
   Rocket,
   type LucideIcon,
 } from "lucide-react";
@@ -42,13 +42,13 @@ export const MODULES: ModuleDef[] = [
   },
   {
     key: "mentor",
-    title: "AI Career Mentor",
-    tagline: "Answers for every crossroad",
+    title: "Job & Internship Finder",
+    tagline: "Roles matched to your resume",
     description:
-      "Ask anything — “Am I ready for Google?”, “What should I learn next?” — and get grounded guidance.",
+      "Live internships and entry-level jobs, fetched automatically and ranked by how well they fit your resume — with a 'why it matches' for each.",
     href: "/dashboard/mentor",
-    icon: Compass,
-    status: "soon",
+    icon: Briefcase,
+    status: "live",
     accent: "text-chart-3",
   },
   {

@@ -1,23 +1,32 @@
-import { Compass } from "lucide-react";
-import { ComingSoon } from "@/components/dashboard/coming-soon";
+import { getOrCreateUser } from "@/lib/auth";
+import { getPrimaryResume } from "@/lib/queries";
+import { getUserJobs } from "@/lib/jobs/service";
+import { jobsSourceReady } from "@/lib/jobs/sources";
+import { PageHeader } from "@/components/dashboard/page-header";
+import { JobsClient } from "@/components/jobs/jobs-client";
 
-export const metadata = { title: "AI Career Mentor" };
+export const metadata = { title: "Job & Internship Finder" };
 
-export default function MentorPage() {
+export default async function JobFinderPage() {
+  const user = await getOrCreateUser();
+  if (!user) return null;
+
+  const [resume, jobs] = await Promise.all([
+    getPrimaryResume(user.id),
+    getUserJobs(user.id),
+  ]);
+
   return (
-    <ComingSoon
-      icon={Compass}
-      title="AI Career Mentor"
-      tagline="Guidance for every crossroad"
-      description="A conversational mentor that knows your resume and goals — ask anything from “Am I ready for Google?” to “Should I focus on AI or Cloud?”"
-      bullets={[
-        "Resume-aware career advice",
-        "Personalized next-skill recommendations",
-        "Role & company fit guidance",
-        "Resume improvement suggestions",
-        "Career-path comparisons",
-        "Always-on, grounded answers",
-      ]}
-    />
+    <div className="mx-auto max-w-6xl">
+      <PageHeader
+        title="Job & Internship Finder"
+        description="Live internships and entry-level roles, fetched automatically and ranked by how well they fit your resume."
+      />
+      <JobsClient
+        initialJobs={jobs}
+        hasResume={!!resume}
+        jsearchReady={jobsSourceReady()}
+      />
+    </div>
   );
 }
