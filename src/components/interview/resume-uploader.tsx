@@ -2,10 +2,17 @@
 
 import * as React from "react";
 import { useDropzone } from "react-dropzone";
-import { UploadCloud, FileText, Loader2, CheckCircle2 } from "lucide-react";
+import {
+  UploadCloud,
+  FileText,
+  Loader2,
+  CheckCircle2,
+  Trash2,
+} from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { MAX_RESUME_BYTES } from "@/lib/resume";
+import { deleteResume } from "@/lib/actions";
 import type { ParsedResume } from "@/lib/types";
 
 export interface UploadedResume {
@@ -17,15 +24,18 @@ export interface UploadedResume {
 
 export function ResumeUploader({
   onUploaded,
+  onRemoved,
   compact = false,
 }: {
   onUploaded?: (resume: UploadedResume) => void;
+  onRemoved?: (id: string) => void;
   compact?: boolean;
 }) {
   const [status, setStatus] = React.useState<
-    "idle" | "uploading" | "done"
+    "idle" | "uploading" | "done" | "removing"
   >("idle");
   const [fileName, setFileName] = React.useState<string | null>(null);
+  const [uploadedId, setUploadedId] = React.useState<string | null>(null);
 
   const upload = React.useCallback(
     async (file: File) => {
@@ -43,6 +53,7 @@ export function ResumeUploader({
         if (!res.ok) throw new Error(data.error ?? "Upload failed");
 
         setStatus("done");
+        setUploadedId(data.resume.id);
         toast.success("Resume analyzed", {
           description: `${data.resume.parsed.skills?.length ?? 0} skills extracted.`,
         });
@@ -57,6 +68,23 @@ export function ResumeUploader({
     },
     [onUploaded],
   );
+
+  const remove = React.useCallback(async () => {
+    if (!uploadedId) return;
+    const id = uploadedId;
+    setStatus("removing");
+    try {
+      await deleteResume(id);
+      setStatus("idle");
+      setFileName(null);
+      setUploadedId(null);
+      onRemoved?.(id);
+      toast.success("File removed");
+    } catch {
+      setStatus("done");
+      toast.error("Could not remove file");
+    }
+  }, [uploadedId, onRemoved]);
 
   const { getRootProps, getInputProps, isDragActive, open } = useDropzone({
     multiple: false,
@@ -76,20 +104,22 @@ export function ResumeUploader({
     onDropAccepted: (files) => {
       if (files[0]) void upload(files[0]);
     },
-    disabled: status === "uploading",
+    disabled: status === "uploading" || status === "removing",
   });
+
+  const busy = status === "uploading" || status === "removing";
 
   return (
     <div
       {...getRootProps()}
-      onClick={status === "uploading" ? undefined : open}
+      onClick={busy ? undefined : open}
       className={cn(
         "flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed text-center transition-colors",
         compact ? "p-6" : "p-10",
         isDragActive
           ? "border-primary bg-primary/5"
           : "border-border bg-card/40 hover:border-primary/40 hover:bg-card/70",
-        status === "uploading" && "pointer-events-none opacity-90",
+        busy && "pointer-events-none opacity-90",
       )}
     >
       <input {...getInputProps()} />
@@ -102,6 +132,11 @@ export function ResumeUploader({
             Extracting skills, projects and experience
           </p>
         </>
+      ) : status === "removing" ? (
+        <>
+          <Loader2 className="mb-3 size-8 animate-spin text-primary" />
+          <p className="text-sm font-medium">Removing {fileName}…</p>
+        </>
       ) : status === "done" ? (
         <>
           <CheckCircle2 className="mb-3 size-8 text-success" />
@@ -109,6 +144,16 @@ export function ResumeUploader({
           <p className="mt-1 text-xs text-muted-foreground">
             Upload a different file to replace it
           </p>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              void remove();
+            }}
+            className="mt-3 inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+          >
+            <Trash2 className="size-3.5" /> Remove file
+          </button>
         </>
       ) : (
         <>

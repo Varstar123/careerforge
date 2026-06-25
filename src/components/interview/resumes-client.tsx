@@ -22,7 +22,10 @@ export function ResumesClient({ resumes }: { resumes: ResumeCardData[] }) {
         )}
       </div>
       <div className="lg:sticky lg:top-24 lg:self-start">
-        <ResumeUploader onUploaded={() => router.refresh()} />
+        <ResumeUploader
+          onUploaded={() => router.refresh()}
+          onRemoved={() => router.refresh()}
+        />
       </div>
     </div>
   );

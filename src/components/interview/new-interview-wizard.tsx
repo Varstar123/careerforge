@@ -93,6 +93,11 @@ export function NewInterviewWizard({
     applyResumeDefaults(option);
   }
 
+  function handleRemoved(id: string) {
+    setResumes((prev) => prev.filter((p) => p.id !== id));
+    setSelectedId((prev) => (prev === id ? null : prev));
+  }
+
   async function createInterview() {
     if (!selected || !targetRole.trim()) return;
     setSubmitting(true);
@@ -164,7 +169,11 @@ export function NewInterviewWizard({
 
           <div className="space-y-2">
             <Label>{resumes.length > 0 ? "…or upload a new one" : "Upload your resume"}</Label>
-            <ResumeUploader onUploaded={handleUploaded} compact />
+            <ResumeUploader
+              onUploaded={handleUploaded}
+              onRemoved={handleRemoved}
+              compact
+            />
           </div>
 
           <div className="flex justify-end">
