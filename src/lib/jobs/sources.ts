@@ -179,26 +179,131 @@ async function fetchAdzuna(q: JobSearchQuery): Promise<NormalizedJob[]> {
     });
 }
 
+// ── Greenhouse (curated well-known companies, free, no key) ─────────────
+interface GreenhouseJob {
+  id?: number;
+  title?: string;
+  location?: { name?: string };
+  absolute_url?: string;
+  updated_at?: string;
+}
+
+// Recognisable companies whose Greenhouse boards are live (verified).
+const GREENHOUSE_COMPANIES: { slug: string; name: string }[] = [
+  { slug: "stripe", name: "Stripe" },
+  { slug: "databricks", name: "Databricks" },
+  { slug: "cloudflare", name: "Cloudflare" },
+  { slug: "anthropic", name: "Anthropic" },
+  { slug: "coinbase", name: "Coinbase" },
+  { slug: "airbnb", name: "Airbnb" },
+  { slug: "figma", name: "Figma" },
+  { slug: "datadog", name: "Datadog" },
+  { slug: "mongodb", name: "MongoDB" },
+  { slug: "lyft", name: "Lyft" },
+  { slug: "discord", name: "Discord" },
+  { slug: "reddit", name: "Reddit" },
+  { slug: "pinterest", name: "Pinterest" },
+  { slug: "robinhood", name: "Robinhood" },
+  { slug: "instacart", name: "Instacart" },
+  { slug: "twitch", name: "Twitch" },
+  { slug: "dropbox", name: "Dropbox" },
+  { slug: "gitlab", name: "GitLab" },
+  { slug: "twilio", name: "Twilio" },
+  { slug: "okta", name: "Okta" },
+  { slug: "affirm", name: "Affirm" },
+  { slug: "scaleai", name: "Scale AI" },
+  { slug: "samsara", name: "Samsara" },
+  { slug: "asana", name: "Asana" },
+];
+
+const INTERN_TITLE = /\bintern(ship)?s?\b/i;
+
+// Memoise board fetches (large, query-independent) across queries + warm
+// invocations. Cache the promise so concurrent queries don't double-fetch.
+const ghBoardCache = new Map<
+  string,
+  { at: number; p: Promise<GreenhouseJob[]> }
+>();
+const GH_BOARD_TTL = 10 * 60 * 1000;
+
+function greenhouseBoard(slug: string): Promise<GreenhouseJob[]> {
+  const hit = ghBoardCache.get(slug);
+  if (hit && Date.now() - hit.at < GH_BOARD_TTL) return hit.p;
+  const p = fetchJson(`https://boards-api.greenhouse.io/v1/boards/${slug}/jobs`)
+    .then((json) => (json as { jobs?: GreenhouseJob[] }).jobs ?? [])
+    .catch((err) => {
+      ghBoardCache.delete(slug); // allow a retry next time
+      throw err;
+    });
+  ghBoardCache.set(slug, { at: Date.now(), p });
+  return p;
+}
+
+async function fetchGreenhouse(q: JobSearchQuery): Promise<NormalizedJob[]> {
+  const wantsIntern = q.employmentTypes.includes("INTERN");
+  const terms = q.role
+    .toLowerCase()
+    .split(/\s+/)
+    .filter((w) => w.length > 2 && w !== "internship");
+
+  const settled = await Promise.allSettled(
+    GREENHOUSE_COMPANIES.map(async (co) => {
+      const jobs = await greenhouseBoard(co.slug);
+      return jobs
+        .filter((j) => {
+          const title = (j.title ?? "").toLowerCase();
+          if (!title || !j.absolute_url || !j.id) return false;
+          if (wantsIntern) return INTERN_TITLE.test(title);
+          return terms.length === 0 || terms.some((t) => title.includes(t));
+        })
+        .slice(0, 8)
+        .map((j): NormalizedJob => {
+          const title = j.title as string;
+          const loc = j.location?.name ?? null;
+          const isRemote = /remote/i.test(`${title} ${loc ?? ""}`);
+          return {
+            source: "greenhouse",
+            externalId: `greenhouse:${co.slug}:${j.id}`,
+            title,
+            company: co.name,
+            location: loc,
+            workMode: isRemote ? "REMOTE" : "ONSITE",
+            employmentType: INTERN_TITLE.test(title) ? "INTERNSHIP" : "FULLTIME",
+            description: "",
+            skills: [],
+            qualifications: [],
+            postedAt: j.updated_at ? new Date(j.updated_at) : null,
+            deadline: null,
+            applyUrl: j.absolute_url as string,
+          };
+        });
+    }),
+  );
+
+  return settled.flatMap((r) => (r.status === "fulfilled" ? r.value : []));
+}
+
 /** Aggregate all available sources for one query, dedupe, apply remote filter. */
 export async function fetchJobsForQuery(
   q: JobSearchQuery,
 ): Promise<NormalizedJob[]> {
-  // Adzuna is the main internship source; make its absence/failure observable.
   const adzunaOn = adzunaConfigured();
-  if (!adzunaOn && q.employmentTypes.includes("INTERN")) {
-    console.warn(
-      "Adzuna disabled (ADZUNA_APP_ID/KEY missing) — internship coverage will be ~0",
-    );
-  }
 
-  const tasks = [fetchRemotive(q.query), fetchArbeitnow(q.role)];
-  if (adzunaOn) tasks.push(fetchAdzuna(q));
-  const settled = await Promise.allSettled(tasks);
+  const sources: { name: string; run: () => Promise<NormalizedJob[]> }[] = [
+    { name: "greenhouse", run: () => fetchGreenhouse(q) },
+    { name: "remotive", run: () => fetchRemotive(q.query) },
+    { name: "arbeitnow", run: () => fetchArbeitnow(q.role) },
+  ];
+  if (adzunaOn) sources.push({ name: "adzuna", run: () => fetchAdzuna(q) });
+
+  const settled = await Promise.allSettled(sources.map((s) => s.run()));
 
   settled.forEach((r, i) => {
     if (r.status === "rejected") {
-      const name = ["remotive", "arbeitnow", "adzuna"][i] ?? "source";
-      console.error(`Job source ${name} failed for "${q.query}":`, r.reason);
+      console.error(
+        `Job source ${sources[i].name} failed for "${q.query}":`,
+        r.reason,
+      );
     }
   });
 
