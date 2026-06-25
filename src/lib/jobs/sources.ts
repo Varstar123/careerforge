@@ -21,6 +21,18 @@ export const jobsSourceReady = () => true;
 const adzunaConfigured = () =>
   !!process.env.ADZUNA_APP_ID && !!process.env.ADZUNA_APP_KEY;
 
+const FETCH_TIMEOUT_MS = 8000;
+
+/** Fetch JSON with a hard timeout so a slow source can't stall the request. */
+async function fetchJson(url: string | URL): Promise<unknown> {
+  const res = await fetch(url, {
+    headers: { accept: "application/json" },
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
 // ── Remotive ────────────────────────────────────────────────────────────
 interface RemotiveJob {
   id: number;
@@ -39,9 +51,7 @@ async function fetchRemotive(query: string): Promise<NormalizedJob[]> {
   if (query) url.searchParams.set("search", query);
   url.searchParams.set("limit", "40");
 
-  const res = await fetch(url, { headers: { accept: "application/json" } });
-  if (!res.ok) throw new Error(`Remotive ${res.status}`);
-  const json = (await res.json()) as { jobs?: RemotiveJob[] };
+  const json = (await fetchJson(url)) as { jobs?: RemotiveJob[] };
 
   return (json.jobs ?? [])
     .filter((j) => j.url && j.title)
@@ -77,11 +87,9 @@ interface ArbeitnowJob {
 }
 
 async function fetchArbeitnow(role: string): Promise<NormalizedJob[]> {
-  const res = await fetch("https://www.arbeitnow.com/api/job-board-api", {
-    headers: { accept: "application/json" },
-  });
-  if (!res.ok) throw new Error(`Arbeitnow ${res.status}`);
-  const json = (await res.json()) as { data?: ArbeitnowJob[] };
+  const json = (await fetchJson(
+    "https://www.arbeitnow.com/api/job-board-api",
+  )) as { data?: ArbeitnowJob[] };
 
   const terms = role
     .toLowerCase()
@@ -140,9 +148,7 @@ async function fetchAdzuna(q: JobSearchQuery): Promise<NormalizedJob[]> {
   url.searchParams.set("max_days_old", "45");
   url.searchParams.set("content-type", "application/json");
 
-  const res = await fetch(url, { headers: { accept: "application/json" } });
-  if (!res.ok) throw new Error(`Adzuna ${res.status}`);
-  const json = (await res.json()) as { results?: AdzunaJob[] };
+  const json = (await fetchJson(url)) as { results?: AdzunaJob[] };
 
   return (json.results ?? [])
     .filter((j) => j.id && j.title && j.redirect_url)

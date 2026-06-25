@@ -58,45 +58,51 @@ export async function cleanupStaleJobs(): Promise<number> {
  * Ensure each query's listings are fresh in the cache. Skips queries fetched
  * <24h ago. No-ops gracefully when JSearch isn't configured (serves stale cache).
  */
+const MAX_PER_QUERY = 20; // cap listings stored per query to bound DB writes
+
+async function ensureOne(q: JobSearchQuery, force: boolean): Promise<void> {
+  const cache = await prisma.jobQuery.findUnique({
+    where: { queryKey: q.queryKey },
+  });
+  if (!force && cache && isFresh(cache.lastFetchedAt)) return;
+  if (!jobsSourceReady()) return;
+
+  try {
+    const jobs = (await fetchJobsForQuery(q)).slice(0, MAX_PER_QUERY);
+
+    await Promise.all(
+      jobs.map((job) =>
+        prisma.jobListing.upsert({
+          where: { externalId: job.externalId },
+          update: { ...job, queryKey: q.queryKey },
+          create: { ...job, queryKey: q.queryKey },
+        }),
+      ),
+    );
+
+    await prisma.jobQuery.upsert({
+      where: { queryKey: q.queryKey },
+      update: { lastFetchedAt: new Date(), resultCount: jobs.length },
+      create: {
+        queryKey: q.queryKey,
+        role: q.role,
+        location: q.location,
+        resultCount: jobs.length,
+      },
+    });
+  } catch (err) {
+    // Source/network errors shouldn't break the request — log & serve cache.
+    console.error(`Job fetch failed for "${q.query}":`, err);
+  }
+}
+
 export async function ensureListings(
   queries: JobSearchQuery[],
   { force = false }: { force?: boolean } = {},
 ): Promise<void> {
-  for (const q of queries) {
-    const cache = await prisma.jobQuery.findUnique({
-      where: { queryKey: q.queryKey },
-    });
-    if (!force && cache && isFresh(cache.lastFetchedAt)) continue;
-    if (!jobsSourceReady()) continue;
-
-    try {
-      const jobs = await fetchJobsForQuery(q);
-
-      await Promise.all(
-        jobs.map((job) =>
-          prisma.jobListing.upsert({
-            where: { externalId: job.externalId },
-            update: { ...job, queryKey: q.queryKey },
-            create: { ...job, queryKey: q.queryKey },
-          }),
-        ),
-      );
-
-      await prisma.jobQuery.upsert({
-        where: { queryKey: q.queryKey },
-        update: { lastFetchedAt: new Date(), resultCount: jobs.length },
-        create: {
-          queryKey: q.queryKey,
-          role: q.role,
-          location: q.location,
-          resultCount: jobs.length,
-        },
-      });
-    } catch (err) {
-      // Source/network errors shouldn't break the request — log & serve cache.
-      console.error(`Job fetch failed for "${q.query}":`, err);
-    }
-  }
+  // Run queries concurrently so wall-time is the slowest query, not the sum
+  // (keeps us well under the serverless function timeout).
+  await Promise.all(queries.map((q) => ensureOne(q, force)));
 }
 
 function toCandidate(job: JobListing): MatchCandidate {
@@ -139,7 +145,11 @@ export async function runJobMatch({
   focus?: BuildFocus;
 }): Promise<{ matched: number; candidates: number }> {
   const resume = ParsedResumeSchema.parse(resumeParsed ?? {});
-  const queries = buildQueries(resume, prefs, { focus });
+  // Fewer queries on a focused (filter-driven) run keeps it fast.
+  const queries = buildQueries(resume, prefs, {
+    focus,
+    maxQueries: focus ? 2 : 3,
+  });
 
   // Quota guard: even on a forced refresh, don't re-hit JSearch for a query
   // fetched within the cooldown window (protects the free tier from spam).

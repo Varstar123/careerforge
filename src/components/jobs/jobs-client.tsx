@@ -82,8 +82,18 @@ export function JobsClient({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ force, focus }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Could not fetch jobs");
+      // The response may be a non-JSON error page (e.g. a timeout) — parse safely.
+      let data: { error?: string; matched?: number } = {};
+      try {
+        data = await res.json();
+      } catch {
+        data = {};
+      }
+      if (!res.ok) {
+        throw new Error(
+          data.error ?? "The search took too long. Please try again.",
+        );
+      }
 
       // Pull the freshly-ranked matches. Keep existing results if this hiccups
       // so the grid never blanks out unexpectedly.
