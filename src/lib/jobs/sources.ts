@@ -480,3 +480,46 @@ export async function fetchJobsForQuery(
 
   return deduped;
 }
+
+/**
+ * Per-source diagnostic — runs each source for a sample role and reports how
+ * many jobs it returned (or the error). Lets us see which sources actually work
+ * from the production (Vercel) environment vs. get IP-blocked.
+ */
+export async function diagnoseSources(
+  role: string,
+): Promise<{ name: string; count: number; error: string | null }[]> {
+  const q: JobSearchQuery = {
+    queryKey: "diag",
+    query: role,
+    role,
+    location: null,
+    remoteOnly: false,
+    employmentTypes: ["FULLTIME", "INTERN"],
+  };
+  const sources: { name: string; run: () => Promise<NormalizedJob[]> }[] = [
+    { name: "greenhouse", run: () => fetchGreenhouse(q) },
+    { name: "amazon", run: () => fetchAmazon(q) },
+    { name: "workday", run: () => fetchWorkday(q) },
+    { name: "remotive", run: () => fetchRemotive(q.query) },
+    { name: "remoteok", run: () => fetchRemoteOk(q) },
+    {
+      name: "adzuna",
+      run: () => (adzunaConfigured() ? fetchAdzuna(q) : Promise.resolve([])),
+    },
+  ];
+  return Promise.all(
+    sources.map(async (s) => {
+      try {
+        const v = await s.run();
+        return { name: s.name, count: v.length, error: null };
+      } catch (e) {
+        return {
+          name: s.name,
+          count: 0,
+          error: e instanceof Error ? e.message : String(e),
+        };
+      }
+    }),
+  );
+}
