@@ -22,11 +22,16 @@ const adzunaConfigured = () =>
   !!process.env.ADZUNA_APP_ID && !!process.env.ADZUNA_APP_KEY;
 
 const FETCH_TIMEOUT_MS = 8000;
+const INTERN_TITLE = /\bintern(ship)?s?\b/i;
 
 /** Fetch JSON with a hard timeout so a slow source can't stall the request. */
 async function fetchJson(url: string | URL): Promise<unknown> {
   const res = await fetch(url, {
-    headers: { accept: "application/json" },
+    headers: {
+      accept: "application/json",
+      // Some boards (e.g. RemoteOK) block requests without a UA.
+      "user-agent": "Mozilla/5.0 (compatible; CareerForgeBot/1.0)",
+    },
     signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -72,7 +77,60 @@ async function fetchRemotive(query: string): Promise<NormalizedJob[]> {
     }));
 }
 
-// ── Arbeitnow ───────────────────────────────────────────────────────────
+// ── RemoteOK (free, no key — all remote tech jobs) ──────────────────────
+interface RemoteOkJob {
+  id?: string | number;
+  company?: string;
+  position?: string;
+  tags?: string[];
+  description?: string;
+  location?: string;
+  url?: string;
+  apply_url?: string;
+  date?: string;
+  epoch?: number;
+}
+
+async function fetchRemoteOk(q: JobSearchQuery): Promise<NormalizedJob[]> {
+  const json = await fetchJson("https://remoteok.com/api");
+  // First array element is a legal/metadata object — filter to real postings.
+  const list = Array.isArray(json) ? (json as RemoteOkJob[]) : [];
+  const terms = q.role
+    .toLowerCase()
+    .split(/\s+/)
+    .filter((w) => w.length > 2 && w !== "internship");
+
+  return list
+    .filter((j) => j && j.id && j.position && (j.url || j.apply_url))
+    .filter((j) => {
+      const hay = `${j.position} ${(j.tags ?? []).join(" ")}`.toLowerCase();
+      return terms.length === 0 || terms.some((t) => hay.includes(t));
+    })
+    .slice(0, 15)
+    .map((j): NormalizedJob => {
+      const title = j.position as string;
+      return {
+        source: "remoteok",
+        externalId: `remoteok:${j.id}`,
+        title,
+        company: j.company ?? "Unknown",
+        location: j.location || "Remote",
+        workMode: "REMOTE",
+        employmentType: INTERN_TITLE.test(title) ? "INTERNSHIP" : "FULLTIME",
+        description: stripHtml(j.description ?? "").slice(0, 6000),
+        skills: Array.isArray(j.tags) ? j.tags.slice(0, 12) : [],
+        qualifications: [],
+        postedAt: j.epoch
+          ? new Date(j.epoch * 1000)
+          : j.date
+            ? new Date(j.date)
+            : null,
+        deadline: null,
+        applyUrl: (j.apply_url || j.url) as string,
+      };
+    });
+}
+
 // ── Adzuna (optional, broad aggregator incl. India) ─────────────────────
 interface AdzunaJob {
   id?: string;
@@ -169,8 +227,6 @@ const GREENHOUSE_COMPANIES: { slug: string; name: string }[] = [
   { slug: "asana", name: "Asana" },
 ];
 
-const INTERN_TITLE = /\bintern(ship)?s?\b/i;
-
 // Memoise board fetches (large, query-independent) across queries + warm
 // invocations. Cache the promise so concurrent queries don't double-fetch.
 const ghBoardCache = new Map<
@@ -242,12 +298,13 @@ export async function fetchJobsForQuery(
 ): Promise<NormalizedJob[]> {
   const adzunaOn = adzunaConfigured();
 
-  // Greenhouse = recognizable companies, Adzuna = India breadth, Remotive =
-  // remote. (Arbeitnow dropped — it flooded results with EU/German on-site
-  // roles irrelevant to the target audience.)
+  // Greenhouse = recognizable companies, Adzuna = India breadth, Remotive +
+  // RemoteOK = remote roles. (Arbeitnow dropped — it flooded results with
+  // EU/German on-site roles irrelevant to the target audience.)
   const sources: { name: string; run: () => Promise<NormalizedJob[]> }[] = [
     { name: "greenhouse", run: () => fetchGreenhouse(q) },
     { name: "remotive", run: () => fetchRemotive(q.query) },
+    { name: "remoteok", run: () => fetchRemoteOk(q) },
   ];
   if (adzunaOn) sources.push({ name: "adzuna", run: () => fetchAdzuna(q) });
 
