@@ -292,17 +292,143 @@ async function fetchGreenhouse(q: JobSearchQuery): Promise<NormalizedJob[]> {
   return settled.flatMap((r) => (r.status === "fulfilled" ? r.value : []));
 }
 
+// ── Amazon (own public career API) ──────────────────────────────────────
+interface AmazonJob {
+  id_icims?: string | number;
+  title?: string;
+  normalized_location?: string;
+  city?: string;
+  country_code?: string;
+  job_path?: string;
+  posted_date?: string;
+  is_intern?: boolean;
+  description?: string;
+  basic_qualifications?: string;
+}
+
+async function fetchAmazon(q: JobSearchQuery): Promise<NormalizedJob[]> {
+  const url = new URL("https://www.amazon.jobs/en/search.json");
+  url.searchParams.set("base_query", q.role);
+  url.searchParams.set("result_limit", "15");
+  url.searchParams.set("sort", "recent");
+
+  const json = (await fetchJson(url)) as { jobs?: AmazonJob[] };
+  return (json.jobs ?? [])
+    .filter((j) => j.job_path && j.title)
+    .map((j): NormalizedJob => {
+      const title = j.title as string;
+      const loc =
+        j.normalized_location ||
+        [j.city, j.country_code].filter(Boolean).join(", ") ||
+        null;
+      const d = j.posted_date ? new Date(j.posted_date) : null;
+      return {
+        source: "amazon",
+        externalId: `amazon:${j.id_icims}`,
+        title,
+        company: "Amazon",
+        location: loc,
+        workMode: /\b(remote|virtual)\b/i.test(`${title} ${loc ?? ""}`)
+          ? "REMOTE"
+          : "ONSITE",
+        employmentType:
+          j.is_intern || INTERN_TITLE.test(title) ? "INTERNSHIP" : "FULLTIME",
+        description: stripHtml(j.description || j.basic_qualifications || "").slice(
+          0,
+          6000,
+        ),
+        skills: [],
+        qualifications: [],
+        postedAt: d && !Number.isNaN(d.getTime()) ? d : null,
+        deadline: null,
+        applyUrl: `https://www.amazon.jobs${j.job_path}`,
+      };
+    });
+}
+
+// ── Workday (one adapter → many big-name tenants; verified) ─────────────
+interface WorkdayPosting {
+  title?: string;
+  externalPath?: string;
+  locationsText?: string;
+}
+
+const WORKDAY_COMPANIES: {
+  name: string;
+  tenant: string;
+  host: string;
+  site: string;
+}[] = [
+  { name: "NVIDIA", tenant: "nvidia", host: "wd5", site: "NVIDIAExternalCareerSite" },
+  { name: "Salesforce", tenant: "salesforce", host: "wd12", site: "External_Career_Site" },
+  { name: "Adobe", tenant: "adobe", host: "wd5", site: "external_experienced" },
+  { name: "Workday", tenant: "workday", host: "wd5", site: "Workday" },
+  { name: "Mastercard", tenant: "mastercard", host: "wd1", site: "CorporateCareers" },
+];
+
+async function fetchWorkday(q: JobSearchQuery): Promise<NormalizedJob[]> {
+  const settled = await Promise.allSettled(
+    WORKDAY_COMPANIES.map(async (co) => {
+      const url = `https://${co.tenant}.${co.host}.myworkdayjobs.com/wday/cxs/${co.tenant}/${co.site}/jobs`;
+      const res = await fetch(url, {
+        method: "POST",
+        headers: {
+          accept: "application/json",
+          "content-type": "application/json",
+          "user-agent": "Mozilla/5.0 (compatible; CareerForgeBot/1.0)",
+        },
+        body: JSON.stringify({
+          appliedFacets: {},
+          limit: 6,
+          offset: 0,
+          searchText: q.role,
+        }),
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+      });
+      if (!res.ok) throw new Error(`Workday ${co.name} ${res.status}`);
+      const json = (await res.json()) as { jobPostings?: WorkdayPosting[] };
+      return (json.jobPostings ?? [])
+        .filter((p) => p.title && p.externalPath)
+        .map((p): NormalizedJob => {
+          const title = p.title as string;
+          const loc = p.locationsText ?? null;
+          return {
+            source: "workday",
+            externalId: `workday:${co.tenant}:${p.externalPath}`,
+            title,
+            company: co.name,
+            location: loc,
+            workMode: /\bremote\b/i.test(`${title} ${loc ?? ""}`)
+              ? "REMOTE"
+              : "ONSITE",
+            employmentType: INTERN_TITLE.test(title) ? "INTERNSHIP" : "FULLTIME",
+            description: "",
+            skills: [],
+            qualifications: [],
+            postedAt: null,
+            deadline: null,
+            applyUrl: `https://${co.tenant}.${co.host}.myworkdayjobs.com/en-US/${co.site}${p.externalPath}`,
+          };
+        });
+    }),
+  );
+  return settled.flatMap((r) => (r.status === "fulfilled" ? r.value : []));
+}
+
 /** Aggregate all available sources for one query, dedupe, apply remote filter. */
 export async function fetchJobsForQuery(
   q: JobSearchQuery,
 ): Promise<NormalizedJob[]> {
   const adzunaOn = adzunaConfigured();
 
-  // Greenhouse = recognizable companies, Adzuna = India breadth, Remotive +
-  // RemoteOK = remote roles. (Arbeitnow dropped — it flooded results with
-  // EU/German on-site roles irrelevant to the target audience.)
+  // Greenhouse + Amazon + Workday = recognizable companies, Adzuna = India
+  // breadth, Remotive + RemoteOK = remote roles. Big-name sources (amazon,
+  // workday) hit undocumented public career APIs — they fail gracefully
+  // (Promise.allSettled) if a datacenter IP is blocked, contributing nothing.
   const sources: { name: string; run: () => Promise<NormalizedJob[]> }[] = [
     { name: "greenhouse", run: () => fetchGreenhouse(q) },
+    { name: "amazon", run: () => fetchAmazon(q) },
+    { name: "workday", run: () => fetchWorkday(q) },
     { name: "remotive", run: () => fetchRemotive(q.query) },
     { name: "remoteok", run: () => fetchRemoteOk(q) },
   ];
@@ -319,12 +445,19 @@ export async function fetchJobsForQuery(
     }
   });
 
-  // Cap each source's contribution so one source can't crowd the others out of
-  // the per-query slice (keeps a balanced mix across sources).
-  const PER_SOURCE = 9;
-  const all = settled.flatMap((r) =>
+  // Cap each source then round-robin interleave, so the downstream per-query
+  // slice keeps a balanced mix across all sources (no single source dominates).
+  const PER_SOURCE = 8;
+  const lists = settled.map((r) =>
     r.status === "fulfilled" ? r.value.slice(0, PER_SOURCE) : [],
   );
+  const all: NormalizedJob[] = [];
+  const maxLen = Math.max(0, ...lists.map((l) => l.length));
+  for (let i = 0; i < maxLen; i++) {
+    for (const list of lists) {
+      if (list[i]) all.push(list[i]);
+    }
+  }
 
   const seen = new Set<string>();
   const deduped: NormalizedJob[] = [];
