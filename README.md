@@ -1,5 +1,7 @@
 # CareerForge AI
 
+**Live demo:** https://careerforge-one-murex.vercel.app/
+
 > Your AI-powered career mentor **and** co-founder — personalized interview
 > coaching, career-readiness analysis, AI mentoring, and startup planning in one
 > premium platform.
