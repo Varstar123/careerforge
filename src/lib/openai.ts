@@ -4,20 +4,22 @@ import OpenAI from "openai";
  * LLM provider wrapper. The whole app talks to the LLM through this file, so
  * swapping providers only touches here. We support any OpenAI-compatible API:
  *
- * - Groq (free, no card): set GROQ_API_KEY  -> https://api.groq.com/openai/v1
+ * - Groq: set GROQ_API_KEY -> https://api.groq.com/openai/v1
  * - OpenAI: set OPENAI_API_KEY
  *
- * Groq takes priority if both are set. Models default sensibly per provider and
- * can be overridden via LLM_FAST_MODEL / LLM_SMART_MODEL.
+ * Groq takes priority by default. An explicit custom endpoint takes precedence.
+ * Models can be overridden via LLM_FAST_MODEL / LLM_SMART_MODEL.
  */
-const groqKey = process.env.GROQ_API_KEY;
-const openaiKey = process.env.OPENAI_API_KEY;
+const groqKey = process.env.GROQ_API_KEY?.trim();
+const openaiKey = process.env.OPENAI_API_KEY?.trim();
+const explicitBaseURL = process.env.OPENAI_BASE_URL?.trim();
 
-const usingGroq = !!groqKey;
-const apiKey = groqKey || openaiKey;
+// Honor an explicit OpenAI-compatible endpoint so its key and URL stay paired.
+const usingGroq = !!groqKey && !explicitBaseURL;
+const apiKey = explicitBaseURL ? openaiKey || groqKey : groqKey || openaiKey;
 const baseURL = usingGroq
   ? "https://api.groq.com/openai/v1"
-  : process.env.OPENAI_BASE_URL || undefined;
+  : explicitBaseURL || undefined;
 
 /** True when an LLM API key is configured (either provider). */
 export const llmConfigured = !!apiKey;
@@ -26,11 +28,11 @@ export const MODELS = {
   /** Faster/cheaper tier — resume parsing, question generation. */
   fast:
     process.env.LLM_FAST_MODEL ??
-    (usingGroq ? "llama-3.3-70b-versatile" : "gpt-4o-mini"),
+    (usingGroq ? "qwen/qwen3.8-27b" : "gpt-4o-mini"),
   /** Higher-quality tier — answer evaluation & coaching. */
   smart:
     process.env.LLM_SMART_MODEL ??
-    (usingGroq ? "llama-3.3-70b-versatile" : "gpt-4o"),
+    (usingGroq ? "qwen/qwen3.8-27b" : "gpt-4o"),
 } as const;
 
 let _client: OpenAI | null = null;
@@ -56,4 +58,10 @@ export function assertLLMConfigured() {
       "No LLM API key set. Add GROQ_API_KEY (free) or OPENAI_API_KEY to .env.local to enable AI features.",
     );
   }
+}
+
+export function getLLMProvider() {
+  if (usingGroq) return "Groq";
+  if (explicitBaseURL) return "custom OpenAI-compatible";
+  return "OpenAI";
 }

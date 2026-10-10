@@ -1,6 +1,9 @@
 import type { JobListing, JobMatch, JobPreference } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { fetchJobsForQuery, jobsSourceReady } from "@/lib/jobs/sources";
+import {
+  diagnoseQuerySources,
+  jobsSourceReady,
+} from "@/lib/jobs/sources";
 import {
   buildQueries,
   type JobSearchQuery,
@@ -66,33 +69,51 @@ async function ensureOne(q: JobSearchQuery, force: boolean): Promise<void> {
   if (!force && cache && isFresh(cache.lastFetchedAt)) return;
   if (!jobsSourceReady()) return;
 
+  let jobs: Awaited<ReturnType<typeof diagnoseQuerySources>>["jobs"];
   try {
-    const jobs = (await fetchJobsForQuery(q)).slice(0, MAX_PER_QUERY);
-
-    await Promise.all(
-      jobs.map((job) =>
-        prisma.jobListing.upsert({
-          where: { externalId: job.externalId },
-          update: { ...job, queryKey: q.queryKey },
-          create: { ...job, queryKey: q.queryKey },
-        }),
-      ),
-    );
-
-    await prisma.jobQuery.upsert({
-      where: { queryKey: q.queryKey },
-      update: { lastFetchedAt: new Date(), resultCount: jobs.length },
-      create: {
-        queryKey: q.queryKey,
-        role: q.role,
-        location: q.location,
-        resultCount: jobs.length,
-      },
-    });
+    const result = await diagnoseQuerySources(q);
+    jobs = result.jobs.slice(0, MAX_PER_QUERY);
   } catch (err) {
-    // Source/network errors shouldn't break the request — log & serve cache.
+    // Source/network errors shouldn't break the request — serve the cache.
     console.error(`Job fetch failed for "${q.query}":`, err);
+    return;
   }
+
+  await Promise.all(
+    jobs.map((job) =>
+      prisma.jobListing.upsert({
+        where: { externalId: job.externalId },
+        update: { ...job, queryKey: q.queryKey },
+        create: { ...job, queryKey: q.queryKey },
+      }),
+    ),
+  );
+
+  await prisma.jobQuery.upsert({
+    where: { queryKey: q.queryKey },
+    update: { lastFetchedAt: new Date(), resultCount: jobs.length },
+    create: {
+      queryKey: q.queryKey,
+      role: q.role,
+      location: q.location,
+      resultCount: jobs.length,
+    },
+  });
+}
+
+export async function diagnoseJobQuery(
+  resumeParsed: unknown,
+  prefs: JobPreference | null,
+  focus?: BuildFocus,
+) {
+  const resume = ParsedResumeSchema.parse(resumeParsed ?? {});
+  const query = buildQueries(resume, prefs, { focus, maxQueries: 1 })[0];
+  if (!query) return { queries: [], sources: [] as string[] };
+  const result = await diagnoseQuerySources(query);
+  return {
+    queries: [{ query: query.query, jobs: result.jobs.length }],
+    sources: result.failed,
+  };
 }
 
 export async function ensureListings(
@@ -128,7 +149,7 @@ function profileFromResume(resume: ParsedResume, prefs: JobPreference | null) {
 
 /**
  * Full run for a user: refresh cache (if stale), pull candidates, score them
- * with Groq, and persist the per-user matches. Returns how many were matched.
+ * with the configured LLM, and persist the per-user matches. Returns counts.
  */
 export async function runJobMatch({
   userId,

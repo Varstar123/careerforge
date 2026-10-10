@@ -8,14 +8,20 @@ import type { JobSearchQuery } from "@/lib/jobs/query-builder";
 /**
  * Job sources. Search works on all of these (unlike JSearch's free tier).
  *
- * - Remotive  — remote jobs, supports keyword search (free, no key).
- * - Arbeitnow — broad EU/remote board, filtered by the role (free, no key).
- * - Adzuna    — broad multi-site aggregator with country + location coverage
- *               (incl. India). Free dev tier; activates when ADZUNA_APP_ID /
- *               ADZUNA_APP_KEY are set, otherwise skipped.
+ * - Simplify   — bot-curated new-grad + internship listings at big-name
+ *                companies (Amazon, Google, Microsoft, Apple, Meta, NVIDIA…),
+ *                fetched as structured JSON from GitHub (free, no key, no IP
+ *                block). The primary source for our student/fresher audience.
+ * - Greenhouse — public ATS boards of well-known companies (free, no key).
+ * - Amazon / Workday — companies' own public career APIs (free, best-effort).
+ * - Remotive   — remote jobs, supports keyword search (free, no key).
+ * - RemoteOK   — remote tech jobs (free, no key).
+ * - Adzuna     — broad multi-site aggregator with country + location coverage
+ *                (incl. India). Free dev tier; activates when ADZUNA_APP_ID /
+ *                ADZUNA_APP_KEY are set, otherwise skipped.
  */
 
-/** Always available — Remotive/Arbeitnow need no credentials. */
+/** Public job boards do not require credentials. */
 export const jobsSourceReady = () => true;
 
 const adzunaConfigured = () =>
@@ -415,6 +421,167 @@ async function fetchWorkday(q: JobSearchQuery): Promise<NormalizedJob[]> {
   return settled.flatMap((r) => (r.status === "fulfilled" ? r.value : []));
 }
 
+// ── Simplify community datasets (curated new-grad + internship listings) ────
+// Pitt CSC / SimplifyJobs maintain bot-updated JSON of new-grad + internship
+// roles at big-name companies (Amazon, Google, Microsoft, Apple, Meta, NVIDIA…)
+// with apply links. We fetch the structured listings.json straight from GitHub
+// — no scraping, no anti-bot, and (unlike the bespoke career APIs) GitHub's CDN
+// never IP-blocks a datacenter, so this works reliably from Vercel.
+interface SimplifyListing {
+  id?: string;
+  company_name?: string;
+  title?: string;
+  url?: string;
+  locations?: string[];
+  date_posted?: number; // epoch seconds
+  active?: boolean; // posting still open
+  is_visible?: boolean; // not hidden/removed by maintainers
+  category?: string;
+  terms?: string[]; // e.g. ["Summer 2026"] (internships)
+  degrees?: string[];
+}
+
+const SIMPLIFY_BOARDS: {
+  key: string;
+  kind: "FULLTIME" | "INTERNSHIP";
+  url: string;
+}[] = [
+  {
+    key: "newgrad",
+    kind: "FULLTIME",
+    url: "https://raw.githubusercontent.com/SimplifyJobs/New-Grad-Positions/dev/.github/scripts/listings.json",
+  },
+  {
+    key: "intern",
+    kind: "INTERNSHIP",
+    url: "https://raw.githubusercontent.com/SimplifyJobs/Summer2026-Internships/dev/.github/scripts/listings.json",
+  },
+];
+
+// The boards are ~12MB each, so memoise the parsed live rows (active + visible)
+// across queries and warm invocations. Cache the promise so concurrent queries
+// don't double-download. TTL is short relative to the daily refresh cron.
+const simplifyCache = new Map<
+  string,
+  { at: number; p: Promise<SimplifyListing[]> }
+>();
+const SIMPLIFY_TTL = 30 * 60 * 1000;
+const SIMPLIFY_FETCH_TIMEOUT_MS = 15000; // larger than the default — big files
+const SIMPLIFY_RECENT_MS = 45 * 24 * 60 * 60 * 1000;
+
+// Recognisable employers to float to the top of the (large, unordered) board so
+// big-name roles survive the downstream per-source slice instead of being
+// crowded out by lesser-known listings that happen to appear first.
+const PROMINENT_COMPANY =
+  /\b(amazon|aws|google|alphabet|microsoft|apple|meta|facebook|netflix|nvidia|tesla|uber|airbnb|stripe|salesforce|adobe|oracle|intel|qualcomm|cisco|linkedin|paypal|coinbase|databricks|snowflake|openai|anthropic|bloomberg|goldman|jpmorgan|morgan stanley|capital one|visa|mastercard|atlassian|datadog|snap|pinterest|reddit|doordash|robinhood|palantir|dropbox|spotify|twilio|bytedance|tiktok|samsung|ibm)\b/i;
+
+function simplifyBoard(url: string): Promise<SimplifyListing[]> {
+  const hit = simplifyCache.get(url);
+  if (hit && Date.now() - hit.at < SIMPLIFY_TTL) return hit.p;
+  const p = fetch(url, {
+    headers: {
+      accept: "application/json",
+      "user-agent": "Mozilla/5.0 (compatible; CareerForgeBot/1.0)",
+    },
+    signal: AbortSignal.timeout(SIMPLIFY_FETCH_TIMEOUT_MS),
+  })
+    .then(async (res) => {
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const arr = (await res.json()) as SimplifyListing[];
+      return (Array.isArray(arr) ? arr : []).filter(
+        (j) => j.active && j.is_visible && j.title && j.url && j.id,
+      );
+    })
+    .catch((err) => {
+      simplifyCache.delete(url); // allow a retry next time
+      throw err;
+    });
+  simplifyCache.set(url, { at: Date.now(), p });
+  return p;
+}
+
+async function fetchSimplify(q: JobSearchQuery): Promise<NormalizedJob[]> {
+  const terms = q.role
+    .toLowerCase()
+    .split(/\s+/)
+    .filter((w) => w.length > 2 && w !== "internship");
+
+  // Pick boards by the requested employment types: intern queries hit the
+  // internship board, full-time/entry queries hit the new-grad board, and a
+  // mixed (curated) query hits both. Fall back to both if nothing matched.
+  const wantsIntern = q.employmentTypes.includes("INTERN");
+  const wantsFull =
+    q.employmentTypes.includes("FULLTIME") ||
+    q.employmentTypes.includes("PARTTIME") ||
+    q.employmentTypes.length === 0;
+  let boards = SIMPLIFY_BOARDS.filter(
+    (b) =>
+      (b.kind === "INTERNSHIP" && wantsIntern) ||
+      (b.kind === "FULLTIME" && wantsFull),
+  );
+  if (boards.length === 0) boards = SIMPLIFY_BOARDS;
+
+  const settled = await Promise.allSettled(
+    boards.map(async (board) => {
+      const rows = await simplifyBoard(board.url);
+      return rows
+        .filter((j) => {
+          const title = (j.title ?? "").toLowerCase();
+          return terms.length === 0 || terms.some((t) => title.includes(t));
+        })
+        // Prominent employers first, then most-recently posted.
+        .sort((a, b) => {
+          const d =
+            (PROMINENT_COMPANY.test(b.company_name ?? "") ? 1 : 0) -
+            (PROMINENT_COMPANY.test(a.company_name ?? "") ? 1 : 0);
+          return d !== 0 ? d : (b.date_posted ?? 0) - (a.date_posted ?? 0);
+        })
+        .slice(0, 40)
+        .map((j): NormalizedJob => {
+          const title = j.title as string;
+          const locs = Array.isArray(j.locations)
+            ? j.locations.filter(Boolean)
+            : [];
+          const location = locs.length ? locs.slice(0, 3).join(" · ") : null;
+          const isRemote = /\bremote\b/i.test(`${title} ${location ?? ""}`);
+          // Keep a posted date only when it's recent; otherwise null. The
+          // downstream cleanup purges listings posted >45d ago, but these are
+          // still-open roles — null is never purged, so they survive.
+          const postedMs = j.date_posted ? j.date_posted * 1000 : null;
+          const postedAt =
+            postedMs && Date.now() - postedMs < SIMPLIFY_RECENT_MS
+              ? new Date(postedMs)
+              : null;
+          const description = [
+            `${title} at ${j.company_name ?? "a top company"}.`,
+            j.category ? `Category: ${j.category}.` : "",
+            j.terms?.length ? `Term: ${j.terms.join(", ")}.` : "",
+            locs.length ? `Locations: ${locs.join("; ")}.` : "",
+            j.degrees?.length ? `Degrees: ${j.degrees.join(", ")}.` : "",
+          ]
+            .filter(Boolean)
+            .join(" ");
+          return {
+            source: "simplify",
+            externalId: `simplify:${board.key}:${j.id}`,
+            title,
+            company: j.company_name ?? "Unknown",
+            location,
+            workMode: isRemote ? "REMOTE" : "ONSITE",
+            employmentType: INTERN_TITLE.test(title) ? "INTERNSHIP" : board.kind,
+            description,
+            skills: [],
+            qualifications: [],
+            postedAt,
+            deadline: null,
+            applyUrl: j.url as string,
+          };
+        });
+    }),
+  );
+  return settled.flatMap((r) => (r.status === "fulfilled" ? r.value : []));
+}
+
 /** Aggregate all available sources for one query, dedupe, apply remote filter. */
 export async function fetchJobsForQuery(
   q: JobSearchQuery,
@@ -426,6 +593,7 @@ export async function fetchJobsForQuery(
   // workday) hit undocumented public career APIs — they fail gracefully
   // (Promise.allSettled) if a datacenter IP is blocked, contributing nothing.
   const sources: { name: string; run: () => Promise<NormalizedJob[]> }[] = [
+    { name: "simplify", run: () => fetchSimplify(q) },
     { name: "greenhouse", run: () => fetchGreenhouse(q) },
     { name: "amazon", run: () => fetchAmazon(q) },
     { name: "workday", run: () => fetchWorkday(q) },
@@ -481,6 +649,40 @@ export async function fetchJobsForQuery(
   return deduped;
 }
 
+/** Count all failed sources so the API can distinguish "no listings" from
+ * "the hosting environment could not reach any configured job board". */
+export async function diagnoseQuerySources(
+  q: JobSearchQuery,
+): Promise<{ jobs: NormalizedJob[]; failed: string[] }> {
+  const adzunaOn = adzunaConfigured();
+  const sources: { name: string; run: () => Promise<NormalizedJob[]> }[] = [
+    { name: "simplify", run: () => fetchSimplify(q) },
+    { name: "greenhouse", run: () => fetchGreenhouse(q) },
+    { name: "amazon", run: () => fetchAmazon(q) },
+    { name: "workday", run: () => fetchWorkday(q) },
+    { name: "remotive", run: () => fetchRemotive(q.query) },
+    { name: "remoteok", run: () => fetchRemoteOk(q) },
+  ];
+  if (adzunaOn) sources.push({ name: "adzuna", run: () => fetchAdzuna(q) });
+
+  const settled = await Promise.allSettled(sources.map((source) => source.run()));
+  settled.forEach((result, index) => {
+    if (result.status === "rejected") {
+      console.error(
+        `Job source ${sources[index].name} failed for "${q.query}":`,
+        result.reason,
+      );
+    }
+  });
+  const failed = settled.flatMap((result, index) =>
+    result.status === "rejected" ? [sources[index].name] : [],
+  );
+  const jobs = settled.flatMap((result) =>
+    result.status === "fulfilled" ? result.value : [],
+  );
+  return { jobs, failed };
+}
+
 /**
  * Per-source diagnostic — runs each source for a sample role and reports how
  * many jobs it returned (or the error). Lets us see which sources actually work
@@ -498,6 +700,7 @@ export async function diagnoseSources(
     employmentTypes: ["FULLTIME", "INTERN"],
   };
   const sources: { name: string; run: () => Promise<NormalizedJob[]> }[] = [
+    { name: "simplify", run: () => fetchSimplify(q) },
     { name: "greenhouse", run: () => fetchGreenhouse(q) },
     { name: "amazon", run: () => fetchAmazon(q) },
     { name: "workday", run: () => fetchWorkday(q) },

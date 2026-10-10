@@ -1,7 +1,11 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { getOrCreatePreferences, runJobMatch } from "@/lib/jobs/service";
+import {
+  diagnoseJobQuery,
+  getOrCreatePreferences,
+  runJobMatch,
+} from "@/lib/jobs/service";
 import { apiError, handleApiError } from "@/lib/api";
 
 export const runtime = "nodejs";
@@ -40,6 +44,7 @@ export async function POST(req: NextRequest) {
     }
 
     const prefs = await getOrCreatePreferences(user.id);
+    const jobDiagnostics = await diagnoseJobQuery(resume.parsed, prefs, focus);
     const result = await runJobMatch({
       userId: user.id,
       resumeParsed: resume.parsed,
@@ -48,7 +53,7 @@ export async function POST(req: NextRequest) {
       focus,
     });
 
-    return NextResponse.json(result);
+    return NextResponse.json({ ...result, diagnostics: jobDiagnostics });
   } catch (err) {
     return handleApiError(err);
   }

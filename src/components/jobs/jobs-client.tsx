@@ -139,7 +139,7 @@ export function JobsClient({
         body: JSON.stringify({ force, focus }),
       });
       // The response may be a non-JSON error page (e.g. a timeout) — parse safely.
-      let data: { error?: string } = {};
+      let data: { error?: string; diagnostics?: { sources?: string[] } } = {};
       try {
         data = await res.json();
       } catch {
@@ -149,6 +149,15 @@ export function JobsClient({
         throw new Error(
           data.error ?? "The search took too long. Please try again.",
         );
+      }
+
+      if (
+        data.diagnostics?.sources?.length &&
+        data.diagnostics.sources.length >= 5
+      ) {
+        toast.error("Job boards could not be reached", {
+          description: `Failed sources: ${data.diagnostics.sources.join(", ")}. Check the server network or try again later.`,
+        });
       }
 
       // Report what the user will actually SEE under the active filter, not the
@@ -338,7 +347,7 @@ export function JobsClient({
           title="Find jobs matched to your resume"
           description="We'll pull live internships and entry-level roles, then rank them by how well they fit you."
           action={
-            <Button variant="gradient" onClick={() => run(false)} disabled={loading}>
+            <Button variant="gradient" onClick={() => run(true)} disabled={loading}>
               <Briefcase className="size-4" /> Find jobs
             </Button>
           }
