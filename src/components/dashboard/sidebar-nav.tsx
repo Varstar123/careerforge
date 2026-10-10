@@ -5,7 +5,13 @@ import { usePathname } from "next/navigation";
 import { DASHBOARD_NAV } from "@/config/nav";
 import { cn } from "@/lib/utils";
 
-export function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
+export function SidebarNav({
+  onNavigate,
+  collapsed = false,
+}: {
+  onNavigate?: () => void;
+  collapsed?: boolean;
+}) {
   const pathname = usePathname();
 
   return (
@@ -20,8 +26,11 @@ export function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
             key={item.href}
             href={item.href}
             onClick={onNavigate}
+            title={collapsed ? item.label : undefined}
+            aria-label={collapsed ? item.label : undefined}
             className={cn(
-              "group flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+              "group flex items-center rounded-lg py-2 text-sm font-medium transition-colors",
+              collapsed ? "justify-center px-2" : "gap-3 px-3",
               active
                 ? "bg-primary/10 text-primary"
                 : "text-muted-foreground hover:bg-secondary/60 hover:text-foreground",
@@ -29,12 +38,12 @@ export function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
           >
             <item.icon
               className={cn(
-                "size-[1.15rem]",
+                "size-[1.15rem] shrink-0",
                 active ? "text-primary" : "text-muted-foreground",
               )}
             />
-            <span className="flex-1">{item.label}</span>
-            {item.badge === "soon" && (
+            {!collapsed && <span className="flex-1">{item.label}</span>}
+            {!collapsed && item.badge === "soon" && (
               <span className="rounded-full bg-secondary px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
                 Soon
               </span>
