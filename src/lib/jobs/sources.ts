@@ -1,202 +1,43 @@
 import {
   type NormalizedJob,
   classifyEmployment,
-  stripHtml,
 } from "@/lib/jobs/types";
 import type { JobSearchQuery } from "@/lib/jobs/query-builder";
 
 /**
- * Job sources. Search works on all of these (unlike JSearch's free tier).
- *
- * - Simplify   — bot-curated new-grad + internship listings at big-name
- *                companies (Amazon, Google, Microsoft, Apple, Meta, NVIDIA…),
- *                fetched as structured JSON from GitHub (free, no key, no IP
- *                block). The primary source for our student/fresher audience.
- * - Greenhouse — public ATS boards of well-known companies (free, no key).
- * - Amazon / Workday — companies' own public career APIs (free, best-effort).
- * - Remotive   — remote jobs, supports keyword search (free, no key).
- * - RemoteOK   — remote tech jobs (free, no key).
- * - Adzuna     — broad multi-site aggregator with country + location coverage
- *                (incl. India). Free dev tier; activates when ADZUNA_APP_ID /
- *                ADZUNA_APP_KEY are set, otherwise skipped.
+ * Search public Greenhouse job boards. This API is unauthenticated and does
+ * not require a paid API key; results are limited to the boards listed here.
  */
+const FETCH_TIMEOUT_MS = 8000;
+const GREENHOUSE_BOARDS: { token: string; company: string }[] = [
+  { token: "stripe", company: "Stripe" },
+  { token: "databricks", company: "Databricks" },
+  { token: "cloudflare", company: "Cloudflare" },
+  { token: "anthropic", company: "Anthropic" },
+  { token: "coinbase", company: "Coinbase" },
+  { token: "airbnb", company: "Airbnb" },
+  { token: "figma", company: "Figma" },
+  { token: "datadog", company: "Datadog" },
+  { token: "mongodb", company: "MongoDB" },
+  { token: "lyft", company: "Lyft" },
+  { token: "discord", company: "Discord" },
+  { token: "reddit", company: "Reddit" },
+  { token: "pinterest", company: "Pinterest" },
+  { token: "robinhood", company: "Robinhood" },
+  { token: "instacart", company: "Instacart" },
+  { token: "twitch", company: "Twitch" },
+  { token: "dropbox", company: "Dropbox" },
+  { token: "gitlab", company: "GitLab" },
+  { token: "twilio", company: "Twilio" },
+  { token: "okta", company: "Okta" },
+  { token: "affirm", company: "Affirm" },
+  { token: "scaleai", company: "Scale AI" },
+  { token: "samsara", company: "Samsara" },
+  { token: "asana", company: "Asana" },
+];
 
-/** Public job boards do not require credentials. */
 export const jobsSourceReady = () => true;
 
-const adzunaConfigured = () =>
-  !!process.env.ADZUNA_APP_ID && !!process.env.ADZUNA_APP_KEY;
-
-const FETCH_TIMEOUT_MS = 8000;
-const INTERN_TITLE = /\bintern(ship)?s?\b/i;
-
-/** Fetch JSON with a hard timeout so a slow source can't stall the request. */
-async function fetchJson(url: string | URL): Promise<unknown> {
-  const res = await fetch(url, {
-    headers: {
-      accept: "application/json",
-      // Some boards (e.g. RemoteOK) block requests without a UA.
-      "user-agent": "Mozilla/5.0 (compatible; CareerForgeBot/1.0)",
-    },
-    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-  });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return res.json();
-}
-
-// ── Remotive ────────────────────────────────────────────────────────────
-interface RemotiveJob {
-  id: number;
-  url: string;
-  title: string;
-  company_name: string;
-  candidate_required_location?: string;
-  job_type?: string;
-  publication_date?: string;
-  description?: string;
-  tags?: string[];
-}
-
-async function fetchRemotive(query: string): Promise<NormalizedJob[]> {
-  const url = new URL("https://remotive.com/api/remote-jobs");
-  if (query) url.searchParams.set("search", query);
-  url.searchParams.set("limit", "40");
-
-  const json = (await fetchJson(url)) as { jobs?: RemotiveJob[] };
-
-  return (json.jobs ?? [])
-    .filter((j) => j.url && j.title)
-    .map((j) => ({
-      source: "remotive",
-      externalId: `remotive:${j.id}`,
-      title: j.title,
-      company: j.company_name ?? "Unknown",
-      location: j.candidate_required_location || "Remote",
-      workMode: "REMOTE" as const,
-      employmentType: classifyEmployment(j.title, j.job_type),
-      description: stripHtml(j.description ?? "").slice(0, 6000),
-      skills: Array.isArray(j.tags) ? j.tags.slice(0, 12) : [],
-      qualifications: [],
-      postedAt: j.publication_date ? new Date(j.publication_date) : null,
-      deadline: null,
-      applyUrl: j.url,
-    }));
-}
-
-// ── RemoteOK (free, no key — all remote tech jobs) ──────────────────────
-interface RemoteOkJob {
-  id?: string | number;
-  company?: string;
-  position?: string;
-  tags?: string[];
-  description?: string;
-  location?: string;
-  url?: string;
-  apply_url?: string;
-  date?: string;
-  epoch?: number;
-}
-
-async function fetchRemoteOk(q: JobSearchQuery): Promise<NormalizedJob[]> {
-  const json = await fetchJson("https://remoteok.com/api");
-  // First array element is a legal/metadata object — filter to real postings.
-  const list = Array.isArray(json) ? (json as RemoteOkJob[]) : [];
-  const terms = q.role
-    .toLowerCase()
-    .split(/\s+/)
-    .filter((w) => w.length > 2 && w !== "internship");
-
-  return list
-    .filter((j) => j && j.id && j.position && (j.url || j.apply_url))
-    .filter((j) => {
-      const hay = `${j.position} ${(j.tags ?? []).join(" ")}`.toLowerCase();
-      return terms.length === 0 || terms.some((t) => hay.includes(t));
-    })
-    .slice(0, 15)
-    .map((j): NormalizedJob => {
-      const title = j.position as string;
-      return {
-        source: "remoteok",
-        externalId: `remoteok:${j.id}`,
-        title,
-        company: j.company ?? "Unknown",
-        location: j.location || "Remote",
-        workMode: "REMOTE",
-        employmentType: INTERN_TITLE.test(title) ? "INTERNSHIP" : "FULLTIME",
-        description: stripHtml(j.description ?? "").slice(0, 6000),
-        skills: Array.isArray(j.tags) ? j.tags.slice(0, 12) : [],
-        qualifications: [],
-        postedAt: j.epoch
-          ? new Date(j.epoch * 1000)
-          : j.date
-            ? new Date(j.date)
-            : null,
-        deadline: null,
-        applyUrl: (j.apply_url || j.url) as string,
-      };
-    });
-}
-
-// ── Adzuna (optional, broad aggregator incl. India) ─────────────────────
-interface AdzunaJob {
-  id?: string;
-  title?: string;
-  company?: { display_name?: string };
-  location?: { display_name?: string };
-  description?: string;
-  redirect_url?: string;
-  created?: string;
-  contract_time?: string; // full_time | part_time
-  contract_type?: string; // permanent | contract
-}
-
-async function fetchAdzuna(q: JobSearchQuery): Promise<NormalizedJob[]> {
-  const id = process.env.ADZUNA_APP_ID;
-  const key = process.env.ADZUNA_APP_KEY;
-  if (!id || !key) return [];
-  const country = (process.env.ADZUNA_COUNTRY || "in").toLowerCase();
-
-  const url = new URL(`https://api.adzuna.com/v1/api/jobs/${country}/search/1`);
-  url.searchParams.set("app_id", id);
-  url.searchParams.set("app_key", key);
-  url.searchParams.set("results_per_page", "30");
-  url.searchParams.set("what", q.query);
-  if (q.location) url.searchParams.set("where", q.location);
-  url.searchParams.set("max_days_old", "45");
-  url.searchParams.set("content-type", "application/json");
-
-  const json = (await fetchJson(url)) as { results?: AdzunaJob[] };
-
-  return (json.results ?? [])
-    .filter((j) => j.id && j.title && j.redirect_url)
-    .map((j) => {
-      const title = stripHtml(j.title ?? "");
-      const text = stripHtml(j.description ?? "");
-      const isRemote = /\bremote\b/i.test(`${title} ${text}`);
-      let employmentType = classifyEmployment(title, j.contract_time);
-      if (employmentType !== "INTERNSHIP" && j.contract_type === "contract") {
-        employmentType = "CONTRACT";
-      }
-
-      return {
-        source: "adzuna",
-        externalId: `adzuna:${j.id}`,
-        title,
-        company: j.company?.display_name ?? "Unknown",
-        location: j.location?.display_name ?? null,
-        workMode: (isRemote ? "REMOTE" : "ONSITE") as NormalizedJob["workMode"],
-        employmentType,
-        description: text.slice(0, 6000),
-        skills: [],
-        qualifications: [],
-        postedAt: j.created ? new Date(j.created) : null,
-        deadline: null,
-        applyUrl: j.redirect_url as string,
-      };
-    });
-}
-
-// ── Greenhouse (curated well-known companies, free, no key) ─────────────
 interface GreenhouseJob {
   id?: number;
   title?: string;
@@ -205,533 +46,112 @@ interface GreenhouseJob {
   updated_at?: string;
 }
 
-// Recognisable companies whose Greenhouse boards are live (verified).
-const GREENHOUSE_COMPANIES: { slug: string; name: string }[] = [
-  { slug: "stripe", name: "Stripe" },
-  { slug: "databricks", name: "Databricks" },
-  { slug: "cloudflare", name: "Cloudflare" },
-  { slug: "anthropic", name: "Anthropic" },
-  { slug: "coinbase", name: "Coinbase" },
-  { slug: "airbnb", name: "Airbnb" },
-  { slug: "figma", name: "Figma" },
-  { slug: "datadog", name: "Datadog" },
-  { slug: "mongodb", name: "MongoDB" },
-  { slug: "lyft", name: "Lyft" },
-  { slug: "discord", name: "Discord" },
-  { slug: "reddit", name: "Reddit" },
-  { slug: "pinterest", name: "Pinterest" },
-  { slug: "robinhood", name: "Robinhood" },
-  { slug: "instacart", name: "Instacart" },
-  { slug: "twitch", name: "Twitch" },
-  { slug: "dropbox", name: "Dropbox" },
-  { slug: "gitlab", name: "GitLab" },
-  { slug: "twilio", name: "Twilio" },
-  { slug: "okta", name: "Okta" },
-  { slug: "affirm", name: "Affirm" },
-  { slug: "scaleai", name: "Scale AI" },
-  { slug: "samsara", name: "Samsara" },
-  { slug: "asana", name: "Asana" },
-];
-
-// Memoise board fetches (large, query-independent) across queries + warm
-// invocations. Cache the promise so concurrent queries don't double-fetch.
-const ghBoardCache = new Map<
-  string,
-  { at: number; p: Promise<GreenhouseJob[]> }
->();
-const GH_BOARD_TTL = 10 * 60 * 1000;
-
-function greenhouseBoard(slug: string): Promise<GreenhouseJob[]> {
-  const hit = ghBoardCache.get(slug);
-  if (hit && Date.now() - hit.at < GH_BOARD_TTL) return hit.p;
-  const p = fetchJson(`https://boards-api.greenhouse.io/v1/boards/${slug}/jobs`)
-    .then((json) => (json as { jobs?: GreenhouseJob[] }).jobs ?? [])
-    .catch((err) => {
-      ghBoardCache.delete(slug); // allow a retry next time
-      throw err;
-    });
-  ghBoardCache.set(slug, { at: Date.now(), p });
-  return p;
+async function fetchJson<T>(url: string | URL): Promise<T> {
+  const response = await fetch(url, {
+    headers: { accept: "application/json" },
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+    cache: "no-store",
+  });
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  return (await response.json()) as T;
 }
 
-async function fetchGreenhouse(q: JobSearchQuery): Promise<NormalizedJob[]> {
-  const wantsIntern = q.employmentTypes.includes("INTERN");
-  const terms = q.role
-    .toLowerCase()
-    .split(/\s+/)
-    .filter((w) => w.length > 2 && w !== "internship");
-
-  const settled = await Promise.allSettled(
-    GREENHOUSE_COMPANIES.map(async (co) => {
-      const jobs = await greenhouseBoard(co.slug);
-      return jobs
-        .filter((j) => {
-          const title = (j.title ?? "").toLowerCase();
-          if (!title || !j.absolute_url || !j.id) return false;
-          if (wantsIntern) return INTERN_TITLE.test(title);
-          return terms.length === 0 || terms.some((t) => title.includes(t));
+async function fetchGreenhouse(query: JobSearchQuery): Promise<NormalizedJob[]> {
+  const terms = query.role.toLowerCase().split(/\s+/).filter((term) => term.length > 2);
+  const results = await Promise.allSettled(
+    GREENHOUSE_BOARDS.map(async (board) => {
+      const data = await fetchJson<{ jobs?: GreenhouseJob[] }>(
+        `https://boards-api.greenhouse.io/v1/boards/${board.token}/jobs`,
+      );
+      return (data.jobs ?? [])
+        .filter((job) => {
+          if (!job.title || !job.id || !job.absolute_url) return false;
+          const title = job.title.toLowerCase();
+          if (query.employmentTypes.includes("INTERN")) {
+            return /\bintern(ship)?s?\b/i.test(title);
+          }
+          return terms.length === 0 || terms.some((term) => title.includes(term));
         })
-        .slice(0, 8)
-        .map((j): NormalizedJob => {
-          const title = j.title as string;
-          const loc = j.location?.name ?? null;
-          const isRemote = /remote/i.test(`${title} ${loc ?? ""}`);
+        .slice(0, 5)
+        .map((job): NormalizedJob => {
+          const title = job.title as string;
           return {
             source: "greenhouse",
-            externalId: `greenhouse:${co.slug}:${j.id}`,
+            externalId: `greenhouse:${board.token}:${job.id}`,
             title,
-            company: co.name,
-            location: loc,
-            workMode: isRemote ? "REMOTE" : "ONSITE",
-            employmentType: INTERN_TITLE.test(title) ? "INTERNSHIP" : "FULLTIME",
-            description: "",
-            skills: [],
-            qualifications: [],
-            postedAt: j.updated_at ? new Date(j.updated_at) : null,
-            deadline: null,
-            applyUrl: j.absolute_url as string,
-          };
-        });
-    }),
-  );
-
-  return settled.flatMap((r) => (r.status === "fulfilled" ? r.value : []));
-}
-
-// ── Amazon (own public career API) ──────────────────────────────────────
-interface AmazonJob {
-  id_icims?: string | number;
-  title?: string;
-  normalized_location?: string;
-  city?: string;
-  country_code?: string;
-  job_path?: string;
-  posted_date?: string;
-  is_intern?: boolean;
-  description?: string;
-  basic_qualifications?: string;
-}
-
-async function fetchAmazon(q: JobSearchQuery): Promise<NormalizedJob[]> {
-  const url = new URL("https://www.amazon.jobs/en/search.json");
-  url.searchParams.set("base_query", q.role);
-  url.searchParams.set("result_limit", "15");
-  url.searchParams.set("sort", "recent");
-
-  const json = (await fetchJson(url)) as { jobs?: AmazonJob[] };
-  return (json.jobs ?? [])
-    .filter((j) => j.job_path && j.title)
-    .map((j): NormalizedJob => {
-      const title = j.title as string;
-      const loc =
-        j.normalized_location ||
-        [j.city, j.country_code].filter(Boolean).join(", ") ||
-        null;
-      const d = j.posted_date ? new Date(j.posted_date) : null;
-      return {
-        source: "amazon",
-        externalId: `amazon:${j.id_icims}`,
-        title,
-        company: "Amazon",
-        location: loc,
-        workMode: /\b(remote|virtual)\b/i.test(`${title} ${loc ?? ""}`)
-          ? "REMOTE"
-          : "ONSITE",
-        employmentType:
-          j.is_intern || INTERN_TITLE.test(title) ? "INTERNSHIP" : "FULLTIME",
-        description: stripHtml(j.description || j.basic_qualifications || "").slice(
-          0,
-          6000,
-        ),
-        skills: [],
-        qualifications: [],
-        postedAt: d && !Number.isNaN(d.getTime()) ? d : null,
-        deadline: null,
-        applyUrl: `https://www.amazon.jobs${j.job_path}`,
-      };
-    });
-}
-
-// ── Workday (one adapter → many big-name tenants; verified) ─────────────
-interface WorkdayPosting {
-  title?: string;
-  externalPath?: string;
-  locationsText?: string;
-}
-
-const WORKDAY_COMPANIES: {
-  name: string;
-  tenant: string;
-  host: string;
-  site: string;
-}[] = [
-  { name: "NVIDIA", tenant: "nvidia", host: "wd5", site: "NVIDIAExternalCareerSite" },
-  { name: "Salesforce", tenant: "salesforce", host: "wd12", site: "External_Career_Site" },
-  { name: "Adobe", tenant: "adobe", host: "wd5", site: "external_experienced" },
-  { name: "Workday", tenant: "workday", host: "wd5", site: "Workday" },
-  { name: "Mastercard", tenant: "mastercard", host: "wd1", site: "CorporateCareers" },
-];
-
-async function fetchWorkday(q: JobSearchQuery): Promise<NormalizedJob[]> {
-  const settled = await Promise.allSettled(
-    WORKDAY_COMPANIES.map(async (co) => {
-      const url = `https://${co.tenant}.${co.host}.myworkdayjobs.com/wday/cxs/${co.tenant}/${co.site}/jobs`;
-      const res = await fetch(url, {
-        method: "POST",
-        headers: {
-          accept: "application/json",
-          "content-type": "application/json",
-          "user-agent": "Mozilla/5.0 (compatible; CareerForgeBot/1.0)",
-        },
-        body: JSON.stringify({
-          appliedFacets: {},
-          limit: 6,
-          offset: 0,
-          searchText: q.role,
-        }),
-        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-      });
-      if (!res.ok) throw new Error(`Workday ${co.name} ${res.status}`);
-      const json = (await res.json()) as { jobPostings?: WorkdayPosting[] };
-      return (json.jobPostings ?? [])
-        .filter((p) => p.title && p.externalPath)
-        .map((p): NormalizedJob => {
-          const title = p.title as string;
-          const loc = p.locationsText ?? null;
-          return {
-            source: "workday",
-            externalId: `workday:${co.tenant}:${p.externalPath}`,
-            title,
-            company: co.name,
-            location: loc,
-            workMode: /\bremote\b/i.test(`${title} ${loc ?? ""}`)
+            company: board.company,
+            location: job.location?.name ?? null,
+            workMode: /\bremote\b/i.test(`${title} ${job.location?.name ?? ""}`)
               ? "REMOTE"
               : "ONSITE",
-            employmentType: INTERN_TITLE.test(title) ? "INTERNSHIP" : "FULLTIME",
+            employmentType: classifyEmployment(title),
             description: "",
             skills: [],
             qualifications: [],
-            postedAt: null,
+            postedAt: job.updated_at ? new Date(job.updated_at) : null,
             deadline: null,
-            applyUrl: `https://${co.tenant}.${co.host}.myworkdayjobs.com/en-US/${co.site}${p.externalPath}`,
+            applyUrl: job.absolute_url as string,
           };
         });
     }),
   );
-  return settled.flatMap((r) => (r.status === "fulfilled" ? r.value : []));
-}
-
-// ── Simplify community datasets (curated new-grad + internship listings) ────
-// Pitt CSC / SimplifyJobs maintain bot-updated JSON of new-grad + internship
-// roles at big-name companies (Amazon, Google, Microsoft, Apple, Meta, NVIDIA…)
-// with apply links. We fetch the structured listings.json straight from GitHub
-// — no scraping, no anti-bot, and (unlike the bespoke career APIs) GitHub's CDN
-// never IP-blocks a datacenter, so this works reliably from Vercel.
-interface SimplifyListing {
-  id?: string;
-  company_name?: string;
-  title?: string;
-  url?: string;
-  locations?: string[];
-  date_posted?: number; // epoch seconds
-  active?: boolean; // posting still open
-  is_visible?: boolean; // not hidden/removed by maintainers
-  category?: string;
-  terms?: string[]; // e.g. ["Summer 2026"] (internships)
-  degrees?: string[];
-}
-
-const SIMPLIFY_BOARDS: {
-  key: string;
-  kind: "FULLTIME" | "INTERNSHIP";
-  url: string;
-}[] = [
-  {
-    key: "newgrad",
-    kind: "FULLTIME",
-    url: "https://raw.githubusercontent.com/SimplifyJobs/New-Grad-Positions/dev/.github/scripts/listings.json",
-  },
-  {
-    key: "intern",
-    kind: "INTERNSHIP",
-    url: "https://raw.githubusercontent.com/SimplifyJobs/Summer2026-Internships/dev/.github/scripts/listings.json",
-  },
-];
-
-// The boards are ~12MB each, so memoise the parsed live rows (active + visible)
-// across queries and warm invocations. Cache the promise so concurrent queries
-// don't double-download. TTL is short relative to the daily refresh cron.
-const simplifyCache = new Map<
-  string,
-  { at: number; p: Promise<SimplifyListing[]> }
->();
-const SIMPLIFY_TTL = 30 * 60 * 1000;
-const SIMPLIFY_FETCH_TIMEOUT_MS = 15000; // larger than the default — big files
-const SIMPLIFY_RECENT_MS = 45 * 24 * 60 * 60 * 1000;
-
-// Recognisable employers to float to the top of the (large, unordered) board so
-// big-name roles survive the downstream per-source slice instead of being
-// crowded out by lesser-known listings that happen to appear first.
-const PROMINENT_COMPANY =
-  /\b(amazon|aws|google|alphabet|microsoft|apple|meta|facebook|netflix|nvidia|tesla|uber|airbnb|stripe|salesforce|adobe|oracle|intel|qualcomm|cisco|linkedin|paypal|coinbase|databricks|snowflake|openai|anthropic|bloomberg|goldman|jpmorgan|morgan stanley|capital one|visa|mastercard|atlassian|datadog|snap|pinterest|reddit|doordash|robinhood|palantir|dropbox|spotify|twilio|bytedance|tiktok|samsung|ibm)\b/i;
-
-function simplifyBoard(url: string): Promise<SimplifyListing[]> {
-  const hit = simplifyCache.get(url);
-  if (hit && Date.now() - hit.at < SIMPLIFY_TTL) return hit.p;
-  const p = fetch(url, {
-    headers: {
-      accept: "application/json",
-      "user-agent": "Mozilla/5.0 (compatible; CareerForgeBot/1.0)",
-    },
-    signal: AbortSignal.timeout(SIMPLIFY_FETCH_TIMEOUT_MS),
-  })
-    .then(async (res) => {
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const arr = (await res.json()) as SimplifyListing[];
-      return (Array.isArray(arr) ? arr : []).filter(
-        (j) => j.active && j.is_visible && j.title && j.url && j.id,
-      );
-    })
-    .catch((err) => {
-      simplifyCache.delete(url); // allow a retry next time
-      throw err;
-    });
-  simplifyCache.set(url, { at: Date.now(), p });
-  return p;
-}
-
-async function fetchSimplify(q: JobSearchQuery): Promise<NormalizedJob[]> {
-  const terms = q.role
-    .toLowerCase()
-    .split(/\s+/)
-    .filter((w) => w.length > 2 && w !== "internship");
-
-  // Pick boards by the requested employment types: intern queries hit the
-  // internship board, full-time/entry queries hit the new-grad board, and a
-  // mixed (curated) query hits both. Fall back to both if nothing matched.
-  const wantsIntern = q.employmentTypes.includes("INTERN");
-  const wantsFull =
-    q.employmentTypes.includes("FULLTIME") ||
-    q.employmentTypes.includes("PARTTIME") ||
-    q.employmentTypes.length === 0;
-  let boards = SIMPLIFY_BOARDS.filter(
-    (b) =>
-      (b.kind === "INTERNSHIP" && wantsIntern) ||
-      (b.kind === "FULLTIME" && wantsFull),
-  );
-  if (boards.length === 0) boards = SIMPLIFY_BOARDS;
-
-  const settled = await Promise.allSettled(
-    boards.map(async (board) => {
-      const rows = await simplifyBoard(board.url);
-      return rows
-        .filter((j) => {
-          const title = (j.title ?? "").toLowerCase();
-          return terms.length === 0 || terms.some((t) => title.includes(t));
-        })
-        // Prominent employers first, then most-recently posted.
-        .sort((a, b) => {
-          const d =
-            (PROMINENT_COMPANY.test(b.company_name ?? "") ? 1 : 0) -
-            (PROMINENT_COMPANY.test(a.company_name ?? "") ? 1 : 0);
-          return d !== 0 ? d : (b.date_posted ?? 0) - (a.date_posted ?? 0);
-        })
-        .slice(0, 40)
-        .map((j): NormalizedJob => {
-          const title = j.title as string;
-          const locs = Array.isArray(j.locations)
-            ? j.locations.filter(Boolean)
-            : [];
-          const location = locs.length ? locs.slice(0, 3).join(" · ") : null;
-          const isRemote = /\bremote\b/i.test(`${title} ${location ?? ""}`);
-          // Keep a posted date only when it's recent; otherwise null. The
-          // downstream cleanup purges listings posted >45d ago, but these are
-          // still-open roles — null is never purged, so they survive.
-          const postedMs = j.date_posted ? j.date_posted * 1000 : null;
-          const postedAt =
-            postedMs && Date.now() - postedMs < SIMPLIFY_RECENT_MS
-              ? new Date(postedMs)
-              : null;
-          const description = [
-            `${title} at ${j.company_name ?? "a top company"}.`,
-            j.category ? `Category: ${j.category}.` : "",
-            j.terms?.length ? `Term: ${j.terms.join(", ")}.` : "",
-            locs.length ? `Locations: ${locs.join("; ")}.` : "",
-            j.degrees?.length ? `Degrees: ${j.degrees.join(", ")}.` : "",
-          ]
-            .filter(Boolean)
-            .join(" ");
-          return {
-            source: "simplify",
-            externalId: `simplify:${board.key}:${j.id}`,
-            title,
-            company: j.company_name ?? "Unknown",
-            location,
-            workMode: isRemote ? "REMOTE" : "ONSITE",
-            employmentType: INTERN_TITLE.test(title) ? "INTERNSHIP" : board.kind,
-            description,
-            skills: [],
-            qualifications: [],
-            postedAt,
-            deadline: null,
-            applyUrl: j.url as string,
-          };
-        });
-    }),
-  );
-  return settled.flatMap((r) => (r.status === "fulfilled" ? r.value : []));
-}
-
-/** Aggregate all available sources for one query, dedupe, apply remote filter. */
-export async function fetchJobsForQuery(
-  q: JobSearchQuery,
-): Promise<NormalizedJob[]> {
-  const result = await fetchJobsForQueryWithDiagnostics(q);
-  return result.jobs;
-}
-
-/** Count all failed sources so the API can distinguish "no listings" from
- * "the hosting environment could not reach any configured job board". */
-export async function diagnoseQuerySources(
-  q: JobSearchQuery,
-): Promise<{ jobs: NormalizedJob[]; failed: string[] }> {
-  const adzunaOn = adzunaConfigured();
-  const sources: { name: string; run: () => Promise<NormalizedJob[]> }[] = [
-    { name: "simplify", run: () => fetchSimplify(q) },
-    { name: "greenhouse", run: () => fetchGreenhouse(q) },
-    { name: "amazon", run: () => fetchAmazon(q) },
-    { name: "workday", run: () => fetchWorkday(q) },
-    { name: "remotive", run: () => fetchRemotive(q.query) },
-    { name: "remoteok", run: () => fetchRemoteOk(q) },
-  ];
-  if (adzunaOn) sources.push({ name: "adzuna", run: () => fetchAdzuna(q) });
-
-  const settled = await Promise.allSettled(sources.map((source) => source.run()));
-  settled.forEach((result, index) => {
-    if (result.status === "rejected") {
-      console.error(
-        `Job source ${sources[index].name} failed for "${q.query}":`,
-        result.reason,
-      );
-    }
-  });
-  const failed = settled.flatMap((result, index) =>
-    result.status === "rejected" ? [sources[index].name] : [],
-  );
-  const jobs = settled.flatMap((result) =>
+  if (results.every((result) => result.status === "rejected")) {
+    throw new Error("All configured Greenhouse boards failed to respond.");
+  }
+  return results.flatMap((result) =>
     result.status === "fulfilled" ? result.value : [],
   );
-  return { jobs, failed };
+}
+
+async function fetchAllSources(query: JobSearchQuery) {
+  try {
+    return { jobs: await fetchGreenhouse(query), failed: [] as string[] };
+  } catch (error) {
+    console.error(`Greenhouse search failed for "${query.query}":`, error);
+    return { jobs: [] as NormalizedJob[], failed: ["greenhouse"] };
+  }
+}
+
+export async function fetchJobsForQuery(
+  query: JobSearchQuery,
+): Promise<NormalizedJob[]> {
+  const { jobs } = await fetchAllSources(query);
+  return query.remoteOnly
+    ? jobs.filter((job) => job.workMode === "REMOTE")
+    : jobs;
 }
 
 export async function fetchJobsForQueryWithDiagnostics(
-  q: JobSearchQuery,
+  query: JobSearchQuery,
 ): Promise<{ jobs: NormalizedJob[]; failed: string[] }> {
-  const settledJobs: NormalizedJob[] = [];
-  const failures: string[] = [];
-  const sourceRunners: { name: string; run: () => Promise<NormalizedJob[]> }[] = [
-    { name: "simplify", run: () => fetchSimplify(q) },
-    { name: "greenhouse", run: () => fetchGreenhouse(q) },
-    { name: "amazon", run: () => fetchAmazon(q) },
-    { name: "workday", run: () => fetchWorkday(q) },
-    { name: "remotive", run: () => fetchRemotive(q.query) },
-    { name: "remoteok", run: () => fetchRemoteOk(q) },
-  ];
-  if (adzunaConfigured()) {
-    sourceRunners.push({ name: "adzuna", run: () => fetchAdzuna(q) });
-  }
-
-  const timeoutMs = 10_000;
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const timeout = new Promise<"timeout">((resolve) => {
-    timer = setTimeout(() => resolve("timeout"), timeoutMs);
-  });
-  const allSources = Promise.all(
-    sourceRunners.map(async (source) => {
-      try {
-        const jobs = await source.run();
-        settledJobs.push(...jobs);
-      } catch (error) {
-        failures.push(source.name);
-        console.error(`Job source ${source.name} failed for "${q.query}":`, error);
-      }
-    }),
-  );
-  const sourceStatus = await Promise.race([allSources.then(() => "done" as const), timeout]);
-  if (timer) clearTimeout(timer);
-  if (sourceStatus === "timeout") failures.push("slow sources (search deadline reached)");
-
-  const PER_SOURCE = 8;
-  const groups = new Map<string, NormalizedJob[]>();
-  for (const job of settledJobs) {
-    const rows = groups.get(job.source) ?? [];
-    if (rows.length < PER_SOURCE) rows.push(job);
-    groups.set(job.source, rows);
-  }
-  const lists = [...groups.values()];
-  const mixed: NormalizedJob[] = [];
-  for (let index = 0; index < Math.max(0, ...lists.map((list) => list.length)); index++) {
-    for (const list of lists) if (list[index]) mixed.push(list[index]);
-  }
-
-  const seen = new Set<string>();
-  const deduped = mixed.filter((job) => {
-    if (seen.has(job.externalId) || (q.remoteOnly && job.workMode !== "REMOTE")) {
-      return false;
-    }
-    seen.add(job.externalId);
-    return true;
-  });
-  if (q.employmentTypes.includes("INTERN")) {
-    deduped.sort(
-      (a, b) =>
-        Number(b.employmentType === "INTERNSHIP") -
-        Number(a.employmentType === "INTERNSHIP"),
-    );
-  }
-  return { jobs: deduped, failed: failures };
+  const result = await fetchAllSources(query);
+  return {
+    jobs: query.remoteOnly
+      ? result.jobs.filter((job) => job.workMode === "REMOTE")
+      : result.jobs,
+    failed: result.failed,
+  };
 }
 
-/**
- * Per-source diagnostic — runs each source for a sample role and reports how
- * many jobs it returned (or the error). Lets us see which sources actually work
- * from the production (Vercel) environment vs. get IP-blocked.
- */
 export async function diagnoseSources(
   role: string,
 ): Promise<{ name: string; count: number; error: string | null }[]> {
-  const q: JobSearchQuery = {
-    queryKey: "diag",
+  const query: JobSearchQuery = {
+    queryKey: "diagnostic",
     query: role,
     role,
     location: null,
     remoteOnly: false,
     employmentTypes: ["FULLTIME", "INTERN"],
   };
-  const sources: { name: string; run: () => Promise<NormalizedJob[]> }[] = [
-    { name: "simplify", run: () => fetchSimplify(q) },
-    { name: "greenhouse", run: () => fetchGreenhouse(q) },
-    { name: "amazon", run: () => fetchAmazon(q) },
-    { name: "workday", run: () => fetchWorkday(q) },
-    { name: "remotive", run: () => fetchRemotive(q.query) },
-    { name: "remoteok", run: () => fetchRemoteOk(q) },
-    {
-      name: "adzuna",
-      run: () => (adzunaConfigured() ? fetchAdzuna(q) : Promise.resolve([])),
-    },
-  ];
-  return Promise.all(
-    sources.map(async (s) => {
-      try {
-        const v = await s.run();
-        return { name: s.name, count: v.length, error: null };
-      } catch (e) {
-        return {
-          name: s.name,
-          count: 0,
-          error: e instanceof Error ? e.message : String(e),
-        };
-      }
-    }),
-  );
+
+  try {
+    return [{ name: "greenhouse", count: (await fetchGreenhouse(query)).length, error: null }];
+  } catch (error) {
+    return [{
+      name: "greenhouse",
+      count: 0,
+      error: error instanceof Error ? error.message : String(error),
+    }];
+  }
 }

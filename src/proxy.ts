@@ -7,7 +7,12 @@ const isProtectedRoute = createRouteMatcher([
   "/api/interview(.*)",
 ]);
 
+const localAuthBypass =
+  process.env.NODE_ENV === "development" &&
+  process.env.LOCAL_AUTH_BYPASS === "true";
+
 const clerkEnabled =
+  !localAuthBypass &&
   !!process.env.CLERK_SECRET_KEY &&
   !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
 

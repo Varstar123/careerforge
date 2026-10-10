@@ -9,7 +9,6 @@ import {
   Briefcase,
   FileText,
   Wifi,
-  Sparkles,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -29,10 +28,8 @@ let jobsSessionCache: JobCardData[] | null = null;
 
 export function JobsClient({
   hasResume,
-  jsearchReady,
 }: {
   hasResume: boolean;
-  jsearchReady: boolean;
 }) {
   const [jobs, setJobsState] = React.useState<JobCardData[]>(
     () => jobsSessionCache ?? [],
@@ -151,12 +148,9 @@ export function JobsClient({
         );
       }
 
-      if (
-        data.diagnostics?.sources?.length &&
-        data.diagnostics.sources.length >= 5
-      ) {
-        toast.error("Job boards could not be reached", {
-          description: `Failed sources: ${data.diagnostics.sources.join(", ")}. Check the server network or try again later.`,
+      if (data.diagnostics?.sources?.length) {
+        toast("Some job sources are unavailable", {
+          description: `Unavailable sources: ${data.diagnostics.sources.join(", ")}. Showing listings from sources that responded.`,
         });
       }
 
@@ -240,19 +234,6 @@ export function JobsClient({
 
   return (
     <div>
-      {!jsearchReady && (
-        <div className="mb-4 flex items-start gap-2 rounded-lg border border-warning/30 bg-warning/10 p-3 text-sm">
-          <Sparkles className="mt-0.5 size-4 shrink-0 text-warning" />
-          <span className="text-muted-foreground">
-            The live jobs source isn&apos;t connected yet. Add a{" "}
-            <code className="rounded bg-secondary px-1 text-foreground">
-              RAPIDAPI_KEY
-            </code>{" "}
-            to enable fresh listings.
-          </span>
-        </div>
-      )}
-
       {/* Controls */}
       <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center">
         <div className="relative flex-1">

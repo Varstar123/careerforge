@@ -59,6 +59,9 @@ export function JobCard({ job }: { job: JobCardData }) {
             <Building2 className="size-3.5 shrink-0" />
             <span className="truncate">{job.company}</span>
           </p>
+          <span className="mt-0.5 inline-block text-xs text-muted-foreground">
+            Greenhouse
+          </span>
         </div>
         <div
           className={cn(

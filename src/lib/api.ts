@@ -44,7 +44,7 @@ export function handleApiError(err: unknown) {
   // Request timed out (slow model / large file).
   if (status === 408 || /timeout|timed out|ETIMEDOUT|aborted/i.test(message)) {
     return apiError(
-      "That took too long to process. Please try again, or use a smaller file.",
+      "The request timed out. Please try again in a moment.",
       504,
     );
   }

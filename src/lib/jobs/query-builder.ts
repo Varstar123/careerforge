@@ -3,15 +3,15 @@ import type { ParsedResume } from "@/lib/types";
 
 export interface JobSearchQuery {
   queryKey: string;
-  query: string; // string sent to JSearch
+  query: string; // search phrase sent to the active job source
   role: string;
   location: string | null;
   remoteOnly: boolean;
-  employmentTypes: string[]; // JSearch tokens
+  employmentTypes: string[]; // normalized source-independent tokens
 }
 
-/** Map our EmploymentType enum values to JSearch's employment_types tokens. */
-function toJSearchTypes(jobTypes: string[]): string[] {
+/** Convert stored preferences to normalized employment-type tokens. */
+function toSearchTypes(jobTypes: string[]): string[] {
   const map: Record<string, string> = {
     FULLTIME: "FULLTIME",
     PARTTIME: "PARTTIME",
@@ -87,7 +87,7 @@ export function buildQueries(
 
   const remoteOnly = focus?.remoteOnly ?? prefs?.remoteOnly ?? false;
   const level = prefs?.experienceLevel ?? "entry";
-  const prefTypes = toJSearchTypes((prefs?.jobTypes as string[] | undefined) ?? []);
+  const prefTypes = toSearchTypes((prefs?.jobTypes as string[] | undefined) ?? []);
   const employmentTypes = prefTypes.length ? prefTypes : defaultTypesFor(level);
 
   // A focused Internship filter searches internships ONLY (no full-time query

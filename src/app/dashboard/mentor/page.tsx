@@ -1,6 +1,5 @@
 import { getOrCreateUser } from "@/lib/auth";
 import { getPrimaryResume } from "@/lib/queries";
-import { jobsSourceReady } from "@/lib/jobs/sources";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { JobsClient } from "@/components/jobs/jobs-client";
 
@@ -20,7 +19,7 @@ export default async function JobFinderPage() {
         title="Job & Internship Finder"
         description="Live internships and entry-level roles, fetched automatically and ranked by how well they fit your resume."
       />
-      <JobsClient hasResume={!!resume} jsearchReady={jobsSourceReady()} />
+      <JobsClient hasResume={!!resume} />
     </div>
   );
 }

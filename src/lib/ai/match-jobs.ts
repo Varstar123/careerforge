@@ -79,15 +79,20 @@ export async function matchJobs({
 Jobs to score (${jobsPayload.length}):
 ${JSON.stringify(jobsPayload)}`;
 
-  const completion = await getOpenAI().chat.completions.create({
-    model: MODELS.smart,
-    temperature: 0.3,
-    response_format: { type: "json_object" },
-    messages: [
-      { role: "system", content: SYSTEM },
-      { role: "user", content: user },
-    ],
-  });
+  const completion = await getOpenAI().chat.completions.create(
+    {
+      model: MODELS.smart,
+      temperature: 0.3,
+      response_format: { type: "json_object" },
+      messages: [
+        { role: "system", content: SYSTEM },
+        { role: "user", content: user },
+      ],
+    },
+    // Keep the Job Finder request within Vercel's route execution budget.
+    // Other AI features continue to use the shared client retry settings.
+    { timeout: 18_000, maxRetries: 0 },
+  );
 
   const content = completion.choices[0]?.message?.content ?? '{"matches":[]}';
   let json: unknown = {};

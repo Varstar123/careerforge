@@ -13,12 +13,13 @@ import { matchJobs, type MatchCandidate } from "@/lib/ai/match-jobs";
 import { ParsedResumeSchema, type ParsedResume } from "@/lib/types";
 
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24h
-const MAX_CANDIDATES = 24; // cap jobs sent to the matcher in one call
+const MAX_CANDIDATES = 8; // keep DB writes and the Groq request bounded
 const STALE_LISTING_MS = 14 * 24 * 60 * 60 * 1000; // not re-seen in 14d -> gone
 const MAX_LISTING_AGE_MS = 45 * 24 * 60 * 60 * 1000; // posted >45d ago -> expired
 
 export interface JobCardData {
   id: string; // job id
+  source: string;
   title: string;
   company: string;
   location: string | null;
@@ -58,9 +59,9 @@ export async function cleanupStaleJobs(): Promise<number> {
 
 /**
  * Ensure each query's listings are fresh in the cache. Skips queries fetched
- * <24h ago. No-ops gracefully when JSearch isn't configured (serves stale cache).
+ * <24h ago. No-ops when the configured job source is unavailable.
  */
-const MAX_PER_QUERY = 20; // cap listings stored per query to bound DB writes
+const MAX_PER_QUERY = 20; // cap inserted listings per query
 
 async function ensureOne(q: JobSearchQuery, force: boolean): Promise<void> {
   const cache = await prisma.jobQuery.findUnique({
@@ -80,15 +81,21 @@ async function ensureOne(q: JobSearchQuery, force: boolean): Promise<void> {
     return;
   }
 
-  await Promise.all(
-    jobs.map((job) =>
-      prisma.jobListing.upsert({
-        where: { externalId: job.externalId },
-        update: { ...job, queryKey: q.queryKey },
-        create: { ...job, queryKey: q.queryKey },
-      }),
-    ),
-  );
+  if (jobs.length > 0) {
+    const externalIds = jobs.map((job) => job.externalId);
+    // Bulk insert avoids dozens of sequential upserts inside a transaction,
+    // which can exceed the statement timeout on hosted Postgres plans.
+    await prisma.jobListing.createMany({
+      data: jobs.map((job) => ({ ...job, queryKey: q.queryKey })),
+      skipDuplicates: true,
+    });
+    // Existing listings may have been surfaced by another query; associate
+    // them with this query and mark them as seen without another per-row write.
+    await prisma.jobListing.updateMany({
+      where: { externalId: { in: externalIds } },
+      data: { queryKey: q.queryKey, updatedAt: new Date() },
+    });
+  }
 
   await prisma.jobQuery.upsert({
     where: { queryKey: q.queryKey },
@@ -105,16 +112,18 @@ async function ensureOne(q: JobSearchQuery, force: boolean): Promise<void> {
 let latestJobSourceFailures: string[] = [];
 
 export function getLatestJobSourceFailures() {
-  return latestJobSourceFailures;
+  return [...new Set(latestJobSourceFailures)];
 }
 
 export async function ensureListings(
   queries: JobSearchQuery[],
   { force = false }: { force?: boolean } = {},
 ): Promise<void> {
-  // Run queries concurrently so wall-time is the slowest query, not the sum
-  // (keeps us well under the serverless function timeout).
-  await Promise.all(queries.map((q) => ensureOne(q, force)));
+  // Searches overlap heavily across roles. Refresh them sequentially so two
+  // transactions don't contend while upserting the same external job IDs.
+  for (const query of queries) {
+    await ensureOne(query, force);
+  }
 }
 
 function toCandidate(job: JobListing): MatchCandidate {
@@ -167,7 +176,12 @@ export async function runJobMatch({
   // Force (explicit Refresh or a focused filter run) always re-fetches from the
   // sources. The 24h cache below covers ordinary visits, and the free sources
   // have no hard quota to protect, so no cooldown is needed.
+  const sourcesStartedAt = Date.now();
   await ensureListings(queries, { force });
+  console.info("[jobs/run] source refresh finished", {
+    ms: Date.now() - sourcesStartedAt,
+    queryCount: queries.length,
+  });
 
   // When the user is filtering by a type (e.g. INTERNSHIP), only consider
   // listings of that type as candidates — otherwise general full-time rows
@@ -182,10 +196,15 @@ export async function runJobMatch({
     orderBy: { postedAt: "desc" },
     take: MAX_CANDIDATES,
   });
+  console.info("[jobs/run] candidates loaded", {
+    ms: Date.now() - sourcesStartedAt,
+    count: candidates.length,
+  });
 
   if (candidates.length === 0) return { matched: 0, candidates: 0 };
 
   let results: Awaited<ReturnType<typeof matchJobs>> = [];
+  const matchingStartedAt = Date.now();
   try {
     results = await matchJobs({
       profile: profileFromResume(resume, prefs),
@@ -194,9 +213,15 @@ export async function runJobMatch({
   } catch (err) {
     // A slow or unavailable LLM shouldn't make live job listings unusable.
     console.error("Job matching failed; returning listings without AI scores:", err);
+  } finally {
+    console.info("[jobs/run] AI matching finished", {
+      ms: Date.now() - matchingStartedAt,
+      matched: results.length,
+    });
   }
 
-  await Promise.all(
+  const persistenceStartedAt = Date.now();
+  await prisma.$transaction(
     candidates.map((job) => {
       const result = results.find((match) => match.jobId === job.id);
       return prisma.jobMatch.upsert({
@@ -214,6 +239,10 @@ export async function runJobMatch({
       });
     }),
   );
+  console.info("[jobs/run] matches persisted", {
+    ms: Date.now() - persistenceStartedAt,
+    count: candidates.length,
+  });
 
   return { matched: results.length, candidates: candidates.length };
 }
@@ -255,6 +284,7 @@ export async function getUserJobs(
 function toCardData(m: JobMatch & { job: JobListing }): JobCardData {
   return {
     id: m.job.id,
+    source: m.job.source,
     title: m.job.title,
     company: m.job.company,
     location: m.job.location,

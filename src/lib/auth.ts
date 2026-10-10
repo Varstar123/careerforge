@@ -13,6 +13,24 @@ import type { User } from "@prisma/client";
  * of repeating it — this is the main lever for snappy dashboard navigation.
  */
 export const getOrCreateUser = cache(async function getOrCreateUser(): Promise<User | null> {
+  // Temporary local-only identity for exercising authenticated flows without
+  // Clerk. Never enable this outside `next dev`.
+  if (
+    process.env.NODE_ENV === "development" &&
+    process.env.LOCAL_AUTH_BYPASS === "true"
+  ) {
+    return prisma.user.upsert({
+      where: { clerkId: "local-development-user" },
+      update: {},
+      create: {
+        clerkId: "local-development-user",
+        email: "local-development@careerforge.invalid",
+        firstName: "Local",
+        lastName: "Developer",
+      },
+    });
+  }
+
   const { userId } = await auth();
   if (!userId) return null;
 

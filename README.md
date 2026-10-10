@@ -65,6 +65,9 @@ You'll need:
   Also put this in **`.env`** (the Prisma CLI reads `.env`, Next reads `.env.local`).
 - **Clerk keys** — from the [Clerk dashboard](https://dashboard.clerk.com).
 - **`OPENAI_API_KEY`** — from the [OpenAI dashboard](https://platform.openai.com).
+- The Job Finder uses Greenhouse's public Job Board API and needs no job API
+  credentials. It searches participating Greenhouse employers configured in
+  `src/lib/jobs/sources.ts`; this does not cover every employer or job board.
 
 > The app boots without keys (the public landing page renders), but auth, the
 > dashboard, and AI features require the keys above.
