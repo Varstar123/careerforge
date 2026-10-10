@@ -1,7 +1,7 @@
 import type { JobListing, JobMatch, JobPreference } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import {
-  diagnoseQuerySources,
+  fetchJobsForQueryWithDiagnostics,
   jobsSourceReady,
 } from "@/lib/jobs/sources";
 import {
@@ -69,10 +69,11 @@ async function ensureOne(q: JobSearchQuery, force: boolean): Promise<void> {
   if (!force && cache && isFresh(cache.lastFetchedAt)) return;
   if (!jobsSourceReady()) return;
 
-  let jobs: Awaited<ReturnType<typeof diagnoseQuerySources>>["jobs"];
+  let jobs: Awaited<ReturnType<typeof fetchJobsForQueryWithDiagnostics>>["jobs"];
   try {
-    const result = await diagnoseQuerySources(q);
+    const result = await fetchJobsForQueryWithDiagnostics(q);
     jobs = result.jobs.slice(0, MAX_PER_QUERY);
+    latestJobSourceFailures.push(...result.failed);
   } catch (err) {
     // Source/network errors shouldn't break the request — serve the cache.
     console.error(`Job fetch failed for "${q.query}":`, err);
@@ -101,19 +102,10 @@ async function ensureOne(q: JobSearchQuery, force: boolean): Promise<void> {
   });
 }
 
-export async function diagnoseJobQuery(
-  resumeParsed: unknown,
-  prefs: JobPreference | null,
-  focus?: BuildFocus,
-) {
-  const resume = ParsedResumeSchema.parse(resumeParsed ?? {});
-  const query = buildQueries(resume, prefs, { focus, maxQueries: 1 })[0];
-  if (!query) return { queries: [], sources: [] as string[] };
-  const result = await diagnoseQuerySources(query);
-  return {
-    queries: [{ query: query.query, jobs: result.jobs.length }],
-    sources: result.failed,
-  };
+let latestJobSourceFailures: string[] = [];
+
+export function getLatestJobSourceFailures() {
+  return latestJobSourceFailures;
 }
 
 export async function ensureListings(
@@ -164,6 +156,7 @@ export async function runJobMatch({
   force?: boolean;
   focus?: BuildFocus;
 }): Promise<{ matched: number; candidates: number }> {
+  latestJobSourceFailures = [];
   const resume = ParsedResumeSchema.parse(resumeParsed ?? {});
   // Fewer queries on a focused (filter-driven) run keeps it fast.
   const queries = buildQueries(resume, prefs, {
@@ -192,24 +185,34 @@ export async function runJobMatch({
 
   if (candidates.length === 0) return { matched: 0, candidates: 0 };
 
-  const results = await matchJobs({
-    profile: profileFromResume(resume, prefs),
-    candidates: candidates.map(toCandidate),
-  });
+  let results: Awaited<ReturnType<typeof matchJobs>> = [];
+  try {
+    results = await matchJobs({
+      profile: profileFromResume(resume, prefs),
+      candidates: candidates.map(toCandidate),
+    });
+  } catch (err) {
+    // A slow or unavailable LLM shouldn't make live job listings unusable.
+    console.error("Job matching failed; returning listings without AI scores:", err);
+  }
 
   await Promise.all(
-    results.map((r) =>
-      prisma.jobMatch.upsert({
-        where: { userId_jobId: { userId, jobId: r.jobId } },
-        update: { matchScore: r.matchScore, reason: r.reason },
+    candidates.map((job) => {
+      const result = results.find((match) => match.jobId === job.id);
+      return prisma.jobMatch.upsert({
+        where: { userId_jobId: { userId, jobId: job.id } },
+        update: {
+          matchScore: result?.matchScore ?? 0,
+          reason: result?.reason ?? "Listing fetched; AI matching is temporarily unavailable.",
+        },
         create: {
           userId,
-          jobId: r.jobId,
-          matchScore: r.matchScore,
-          reason: r.reason,
+          jobId: job.id,
+          matchScore: result?.matchScore ?? 0,
+          reason: result?.reason ?? "Listing fetched; AI matching is temporarily unavailable.",
         },
-      }),
-    ),
+      });
+    }),
   );
 
   return { matched: results.length, candidates: candidates.length };

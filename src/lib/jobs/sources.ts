@@ -586,67 +586,8 @@ async function fetchSimplify(q: JobSearchQuery): Promise<NormalizedJob[]> {
 export async function fetchJobsForQuery(
   q: JobSearchQuery,
 ): Promise<NormalizedJob[]> {
-  const adzunaOn = adzunaConfigured();
-
-  // Greenhouse + Amazon + Workday = recognizable companies, Adzuna = India
-  // breadth, Remotive + RemoteOK = remote roles. Big-name sources (amazon,
-  // workday) hit undocumented public career APIs — they fail gracefully
-  // (Promise.allSettled) if a datacenter IP is blocked, contributing nothing.
-  const sources: { name: string; run: () => Promise<NormalizedJob[]> }[] = [
-    { name: "simplify", run: () => fetchSimplify(q) },
-    { name: "greenhouse", run: () => fetchGreenhouse(q) },
-    { name: "amazon", run: () => fetchAmazon(q) },
-    { name: "workday", run: () => fetchWorkday(q) },
-    { name: "remotive", run: () => fetchRemotive(q.query) },
-    { name: "remoteok", run: () => fetchRemoteOk(q) },
-  ];
-  if (adzunaOn) sources.push({ name: "adzuna", run: () => fetchAdzuna(q) });
-
-  const settled = await Promise.allSettled(sources.map((s) => s.run()));
-
-  settled.forEach((r, i) => {
-    if (r.status === "rejected") {
-      console.error(
-        `Job source ${sources[i].name} failed for "${q.query}":`,
-        r.reason,
-      );
-    }
-  });
-
-  // Cap each source then round-robin interleave, so the downstream per-query
-  // slice keeps a balanced mix across all sources (no single source dominates).
-  const PER_SOURCE = 8;
-  const lists = settled.map((r) =>
-    r.status === "fulfilled" ? r.value.slice(0, PER_SOURCE) : [],
-  );
-  const all: NormalizedJob[] = [];
-  const maxLen = Math.max(0, ...lists.map((l) => l.length));
-  for (let i = 0; i < maxLen; i++) {
-    for (const list of lists) {
-      if (list[i]) all.push(list[i]);
-    }
-  }
-
-  const seen = new Set<string>();
-  const deduped: NormalizedJob[] = [];
-  for (const job of all) {
-    if (seen.has(job.externalId)) continue;
-    if (q.remoteOnly && job.workMode !== "REMOTE") continue;
-    seen.add(job.externalId);
-    deduped.push(job);
-  }
-
-  // For internship-targeted queries, promote INTERNSHIP rows so they survive
-  // the downstream per-query slice (Remotive's non-intern rows come first).
-  if (q.employmentTypes.includes("INTERN")) {
-    deduped.sort(
-      (a, b) =>
-        Number(b.employmentType === "INTERNSHIP") -
-        Number(a.employmentType === "INTERNSHIP"),
-    );
-  }
-
-  return deduped;
+  const result = await fetchJobsForQueryWithDiagnostics(q);
+  return result.jobs;
 }
 
 /** Count all failed sources so the API can distinguish "no listings" from
@@ -681,6 +622,74 @@ export async function diagnoseQuerySources(
     result.status === "fulfilled" ? result.value : [],
   );
   return { jobs, failed };
+}
+
+export async function fetchJobsForQueryWithDiagnostics(
+  q: JobSearchQuery,
+): Promise<{ jobs: NormalizedJob[]; failed: string[] }> {
+  const settledJobs: NormalizedJob[] = [];
+  const failures: string[] = [];
+  const sourceRunners: { name: string; run: () => Promise<NormalizedJob[]> }[] = [
+    { name: "simplify", run: () => fetchSimplify(q) },
+    { name: "greenhouse", run: () => fetchGreenhouse(q) },
+    { name: "amazon", run: () => fetchAmazon(q) },
+    { name: "workday", run: () => fetchWorkday(q) },
+    { name: "remotive", run: () => fetchRemotive(q.query) },
+    { name: "remoteok", run: () => fetchRemoteOk(q) },
+  ];
+  if (adzunaConfigured()) {
+    sourceRunners.push({ name: "adzuna", run: () => fetchAdzuna(q) });
+  }
+
+  const timeoutMs = 10_000;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<"timeout">((resolve) => {
+    timer = setTimeout(() => resolve("timeout"), timeoutMs);
+  });
+  const allSources = Promise.all(
+    sourceRunners.map(async (source) => {
+      try {
+        const jobs = await source.run();
+        settledJobs.push(...jobs);
+      } catch (error) {
+        failures.push(source.name);
+        console.error(`Job source ${source.name} failed for "${q.query}":`, error);
+      }
+    }),
+  );
+  const sourceStatus = await Promise.race([allSources.then(() => "done" as const), timeout]);
+  if (timer) clearTimeout(timer);
+  if (sourceStatus === "timeout") failures.push("slow sources (search deadline reached)");
+
+  const PER_SOURCE = 8;
+  const groups = new Map<string, NormalizedJob[]>();
+  for (const job of settledJobs) {
+    const rows = groups.get(job.source) ?? [];
+    if (rows.length < PER_SOURCE) rows.push(job);
+    groups.set(job.source, rows);
+  }
+  const lists = [...groups.values()];
+  const mixed: NormalizedJob[] = [];
+  for (let index = 0; index < Math.max(0, ...lists.map((list) => list.length)); index++) {
+    for (const list of lists) if (list[index]) mixed.push(list[index]);
+  }
+
+  const seen = new Set<string>();
+  const deduped = mixed.filter((job) => {
+    if (seen.has(job.externalId) || (q.remoteOnly && job.workMode !== "REMOTE")) {
+      return false;
+    }
+    seen.add(job.externalId);
+    return true;
+  });
+  if (q.employmentTypes.includes("INTERN")) {
+    deduped.sort(
+      (a, b) =>
+        Number(b.employmentType === "INTERNSHIP") -
+        Number(a.employmentType === "INTERNSHIP"),
+    );
+  }
+  return { jobs: deduped, failed: failures };
 }
 
 /**
