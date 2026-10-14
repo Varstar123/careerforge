@@ -49,7 +49,7 @@ export function Features() {
           <span className="text-sm font-medium text-primary">
             Everything you need
           </span>
-          <h2 className="mt-3 text-balance text-3xl font-semibold tracking-tight sm:text-4xl">
+          <h2 className="mt-3 text-balance text-3xl font-extrabold tracking-tight sm:text-4xl">
             One platform from first draft to dream offer
           </h2>
           <p className="mt-4 text-muted-foreground">
@@ -65,7 +65,7 @@ export function Features() {
                 <div className="mb-4 inline-flex size-11 items-center justify-center rounded-lg bg-primary/10 text-primary transition-colors group-hover:bg-primary group-hover:text-primary-foreground">
                   <f.icon className="size-5" />
                 </div>
-                <h3 className="font-semibold">{f.title}</h3>
+                <h3 className="font-bold">{f.title}</h3>
                 <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
                   {f.desc}
                 </p>

@@ -54,7 +54,7 @@ export function JobCard({ job }: { job: JobCardData }) {
     <Card className="flex h-full flex-col p-5">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <h3 className="truncate font-semibold leading-snug">{job.title}</h3>
+          <h3 className="truncate font-bold leading-snug">{job.title}</h3>
           <p className="mt-0.5 flex items-center gap-1.5 text-sm text-muted-foreground">
             <Building2 className="size-3.5 shrink-0" />
             <span className="truncate">{job.company}</span>

@@ -29,7 +29,7 @@ export function SetupNotice({
           </span>
         </div>
 
-        <h1 className="text-xl font-semibold tracking-tight">{title}</h1>
+        <h1 className="text-xl font-extrabold tracking-tight">{title}</h1>
         <p className="mt-2 text-sm text-muted-foreground">{reason}</p>
 
         <div className="mt-6 space-y-3 rounded-xl border border-border bg-background/50 p-4 text-sm">

@@ -24,7 +24,7 @@ export function EmptyState({
       <span className="mb-4 grid size-12 place-items-center rounded-xl bg-primary/10 text-primary">
         <Icon className="size-6" />
       </span>
-      <h3 className="text-base font-semibold">{title}</h3>
+      <h3 className="text-base font-bold">{title}</h3>
       {description && (
         <p className="mt-1.5 max-w-sm text-sm text-muted-foreground">
           {description}

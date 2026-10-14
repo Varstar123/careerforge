@@ -56,7 +56,7 @@ export function ScoreRing({
         />
       </svg>
       <div className="absolute flex flex-col items-center">
-        <span className="text-xl font-semibold tabular-nums">{clamped}</span>
+        <span className="text-xl font-extrabold tabular-nums">{clamped}</span>
         {label && (
           <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
             {label}

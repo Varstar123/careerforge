@@ -28,7 +28,7 @@ export function StartupForm({ initial, editing, onSave, onCancel }: { initial: S
     {errors[key] && <p id={`startup-error-${key}`} className="text-sm text-destructive">{errors[key]}</p>}
   </div>;
   return <form onSubmit={submit} className="rounded-xl border border-border bg-card p-5 sm:p-7">
-    <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-xl font-semibold">{editing ? "Refine your brief" : "Start with a specific problem"}</h2><p className="mt-1 text-sm text-muted-foreground">A narrow first customer makes the next step easier to test.</p></div>{!editing && <Button type="button" variant="ghost" onClick={() => { setBrief({ ...EXAMPLE_BRIEF }); setErrors({}); }}>Try an example</Button>}</div>
+    <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-xl font-extrabold">{editing ? "Refine your brief" : "Start with a specific problem"}</h2><p className="mt-1 text-sm text-muted-foreground">A narrow first customer makes the next step easier to test.</p></div>{!editing && <Button type="button" variant="ghost" onClick={() => { setBrief({ ...EXAMPLE_BRIEF }); setErrors({}); }}>Try an example</Button>}</div>
     <div className="mt-6 space-y-5">
       {field("name", "Working name", "Give this idea a short name", 80, true)}
       {field("idea", "What are you building?", "Describe what the customer can do and the useful result they get.", 2000, true)}

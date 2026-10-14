@@ -23,7 +23,7 @@ export function StatCard({
           <Icon className="size-4" />
         </span>
       </div>
-      <div className="mt-3 text-2xl font-semibold tracking-tight tabular-nums">
+      <div className="mt-3 text-2xl font-extrabold tracking-tight tabular-nums">
         {value}
       </div>
       {hint && <p className="mt-1 text-xs text-muted-foreground">{hint}</p>}

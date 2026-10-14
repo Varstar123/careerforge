@@ -11,7 +11,7 @@ export function CTA() {
           <div className="relative overflow-hidden rounded-3xl border border-border bg-card p-10 text-center sm:p-16">
             <div className="pointer-events-none absolute inset-0 -z-10 opacity-80 [background:radial-gradient(60%_120%_at_50%_0%,color-mix(in_oklch,var(--primary)_22%,transparent),transparent)]" />
             <div className="bg-grid pointer-events-none absolute inset-0 -z-10 opacity-20" />
-            <h2 className="mx-auto max-w-2xl text-balance text-3xl font-semibold tracking-tight sm:text-4xl">
+            <h2 className="mx-auto max-w-2xl text-balance text-3xl font-extrabold tracking-tight sm:text-4xl">
               Your next opportunity is worth preparing for
             </h2>
             <p className="mx-auto mt-4 max-w-xl text-muted-foreground">

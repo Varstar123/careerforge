@@ -13,7 +13,7 @@ export function Stats() {
       <div className="mx-auto grid max-w-6xl grid-cols-2 gap-px px-4 py-12 sm:grid-cols-4">
         {stats.map((s, i) => (
           <Reveal key={s.label} delay={i * 0.05} className="text-center">
-            <div className="text-3xl font-semibold tracking-tight text-gradient sm:text-4xl">
+            <div className="text-3xl font-extrabold tracking-tight text-gradient sm:text-4xl">
               {s.value}
             </div>
             <div className="mt-1 text-sm text-muted-foreground">{s.label}</div>

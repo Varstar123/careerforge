@@ -30,7 +30,7 @@ export function ComingSoon({
               <Sparkles className="size-3" /> Coming soon
             </Badge>
           </div>
-          <h1 className="mt-6 text-3xl font-semibold tracking-tight">{title}</h1>
+          <h1 className="mt-6 text-3xl font-extrabold tracking-tight">{title}</h1>
           <p className="mt-1 font-medium text-primary/80">{tagline}</p>
           <p className="mt-4 max-w-xl text-muted-foreground">{description}</p>
 

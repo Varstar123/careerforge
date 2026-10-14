@@ -43,7 +43,7 @@ export default async function DashboardPage() {
       {/* Greeting */}
       <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">
+          <h1 className="text-2xl font-extrabold tracking-tight">
             Welcome back, {firstName} 👋
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
@@ -111,7 +111,7 @@ export default async function DashboardPage() {
 
           <div>
             <div className="mb-3 flex items-center justify-between">
-              <h2 className="font-semibold">Recent interviews</h2>
+              <h2 className="font-extrabold">Recent interviews</h2>
               {interviews.length > 0 && (
                 <Link
                   href="/dashboard/interview"
@@ -158,7 +158,7 @@ export default async function DashboardPage() {
 
         {/* Modules quick access */}
         <div className="space-y-3">
-          <h2 className="font-semibold">Explore modules</h2>
+          <h2 className="font-extrabold">Explore modules</h2>
           {MODULES.map((m) => (
             <Link
               key={m.key}

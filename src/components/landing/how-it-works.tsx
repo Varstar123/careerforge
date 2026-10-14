@@ -28,7 +28,7 @@ export function HowItWorks() {
       <div className="mx-auto max-w-6xl px-4">
         <Reveal className="mx-auto max-w-2xl text-center">
           <span className="text-sm font-medium text-primary">How it works</span>
-          <h2 className="mt-3 text-balance text-3xl font-semibold tracking-tight sm:text-4xl">
+          <h2 className="mt-3 text-balance text-3xl font-extrabold tracking-tight sm:text-4xl">
             From resume to ready in three steps
           </h2>
         </Reveal>
@@ -43,7 +43,7 @@ export function HowItWorks() {
                   {s.step}
                 </span>
               </div>
-              <h3 className="font-semibold">{s.title}</h3>
+              <h3 className="font-bold">{s.title}</h3>
               <p className="mx-auto mt-2 max-w-xs text-sm leading-relaxed text-muted-foreground">
                 {s.desc}
               </p>

@@ -29,14 +29,14 @@ export function Hero() {
         </div>
 
         <h1
-          className="mx-auto max-w-4xl text-balance text-4xl font-semibold leading-[1.05] tracking-tight sm:text-6xl"
+          className="mx-auto max-w-4xl text-balance text-4xl font-extrabold leading-[1.15] tracking-tight sm:text-6xl"
         >
           <span className="text-gradient">Forge the career</span>
           {" you’re capable of."}
         </h1>
 
         <p
-          className="mx-auto mt-6 max-w-2xl text-pretty text-lg text-muted-foreground"
+          className="mx-auto mt-6 max-w-2xl text-pretty text-lg leading-relaxed text-muted-foreground sm:text-xl"
         >
           Upload your resume and CareerForge AI runs personalized mock
           interviews, scores your industry readiness, closes your skill gaps,

@@ -13,7 +13,7 @@ export function Modules() {
           <span className="text-sm font-medium text-primary">
             Four career tools, one workspace
           </span>
-          <h2 className="mt-3 text-balance text-3xl font-semibold tracking-tight sm:text-4xl">
+          <h2 className="mt-3 text-balance text-3xl font-extrabold tracking-tight sm:text-4xl">
             Your personal mentor and AI co-founder
           </h2>
         </Reveal>
@@ -37,7 +37,7 @@ export function Modules() {
                   )}
                 </div>
 
-                <h3 className="mt-5 text-xl font-semibold tracking-tight">
+                <h3 className="mt-5 text-xl font-bold tracking-tight">
                   {m.title}
                 </h3>
                 <p className="mt-1 text-sm font-medium text-primary/80">

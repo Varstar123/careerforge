@@ -122,8 +122,9 @@
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
 
-  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
-  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+  /* Matches the reference's native sans stack; no web-font download needed. */
+  --font-sans: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+  --font-mono: ui-monospace, "Cascadia Code", "SFMono-Regular", Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
 
   --animate-aurora: aurora 18s ease-in-out infinite alternate;
 }
@@ -136,8 +137,18 @@
     background-color: var(--background);
     color: var(--foreground);
     font-family: var(--font-sans);
+    line-height: 1.6;
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
+  }
+  h1, h2 {
+    font-weight: 800;
+    letter-spacing: -0.025em;
+    line-height: 1.2;
+  }
+  h3, h4 {
+    font-weight: 700;
+    letter-spacing: -0.01em;
   }
   ::selection {
     background-color: color-mix(in oklch, var(--primary) 30%, transparent);

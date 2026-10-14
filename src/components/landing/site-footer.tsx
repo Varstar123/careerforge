@@ -63,7 +63,7 @@ export function SiteFooter() {
 function FooterCol({ title, links }: { title: string; links: FooterLink[] }) {
   return (
     <div>
-      <h4 className="text-sm font-semibold">{title}</h4>
+      <h4 className="text-sm font-bold">{title}</h4>
       <ul className="mt-3 space-y-2">
         {links.map((l) => (
           <li key={l.label}>

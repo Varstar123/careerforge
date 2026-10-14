@@ -63,7 +63,7 @@ export default async function ResultsPage({
             />
             <div className="flex-1 text-center sm:text-left">
               <div className="flex flex-wrap items-center justify-center gap-2 sm:justify-start">
-                <h1 className="text-xl font-semibold tracking-tight">
+                <h1 className="text-xl font-extrabold tracking-tight">
                   {interview.title}
                 </h1>
                 <Badge variant="success">Completed</Badge>
@@ -109,7 +109,7 @@ export default async function ResultsPage({
       </Card>
 
       {/* Per-question breakdown */}
-      <h2 className="mb-3 mt-8 font-semibold">Question breakdown</h2>
+      <h2 className="mb-3 mt-8 font-extrabold">Question breakdown</h2>
       <div className="space-y-3">
         {interview.questions.map((q, i) => {
           const evaluation = toEvaluationView(q.answer?.evaluation);
