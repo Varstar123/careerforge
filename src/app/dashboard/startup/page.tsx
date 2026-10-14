@@ -1,23 +1,19 @@
-import { Rocket } from "lucide-react";
-import { ComingSoon } from "@/components/dashboard/coming-soon";
+import { auth } from "@clerk/nextjs/server";
+import { PageHeader } from "@/components/dashboard/page-header";
+import { StartupBuilder } from "@/components/startup/startup-builder";
 
-export const metadata = { title: "AI Startup Builder" };
+export const metadata = { title: "Startup Builder" };
 
-export default function StartupPage() {
+export default async function StartupPage() {
+  // This browser-local workspace needs identity, not a database profile.
+  // Match the existing development-only bypass used by lib/auth and proxy.
+  const local = process.env.NODE_ENV === "development" && process.env.LOCAL_AUTH_BYPASS === "true";
+  const userId = local ? "local-development-user" : (await auth()).userId;
+  if (!userId) return null;
   return (
-    <ComingSoon
-      icon={Rocket}
-      title="AI Startup Builder"
-      tagline="From idea to actionable roadmap"
-      description="Enter an idea and watch a team of specialized AI agents collaborate — business, finance, product, architecture and marketing — to produce a complete plan."
-      bullets={[
-        "Business agent: market & competitor research",
-        "Finance agent: costs, revenue & break-even",
-        "Product agent: MVP features & roadmap",
-        "Architect agent: system & database design",
-        "Marketing agent: branding & acquisition",
-        "Export the full plan to PDF",
-      ]}
-    />
+    <div className="mx-auto max-w-6xl">
+      <PageHeader title="Startup Builder" description="A practical workspace for testing demand and planning your first useful version." />
+      <StartupBuilder key={userId} storageKey={`careerforge-startup:v1:${userId}`} />
+    </div>
   );
 }

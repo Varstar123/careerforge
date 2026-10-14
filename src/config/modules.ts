@@ -53,13 +53,13 @@ export const MODULES: ModuleDef[] = [
   },
   {
     key: "startup",
-    title: "AI Startup Builder",
+    title: "Startup Builder",
     tagline: "From idea to roadmap",
     description:
-      "Multi-agent workspace — business, finance, product, architecture and marketing — that turns ideas into plans.",
+      "Test demand, define an MVP, plan the build and track your next steps in a guided workspace. No AI credits needed.",
     href: "/dashboard/startup",
     icon: Rocket,
-    status: "soon",
+    status: "live",
     accent: "text-chart-5",
   },
 ];

@@ -6,10 +6,8 @@
 > coaching, career-readiness analysis, AI mentoring, and startup planning in one
 > premium platform.
 
-This repository contains the **foundation** plus a fully-working **AI Interview
-Coach** module. The other three modules (Readiness Analyzer, Career Mentor,
-Startup Builder) ship as polished "coming soon" surfaces wired into the same
-shell, ready to be built out next.
+The platform includes an AI Interview Coach, role-specific Readiness Analyzer,
+Job & Internship Finder, and a guided Startup Builder.
 
 ---
 
@@ -31,6 +29,28 @@ shell, ready to be built out next.
 - **Dashboard** shell with sidebar, responsive layout, dark/light theme.
 - **Clerk** authentication (+ webhook user sync) and **Prisma/PostgreSQL** data layer.
 - Custom **shadcn-style UI kit**, design tokens (OKLCH), and Framer Motion.
+
+### Startup Builder
+- A free guided worksheet for validating demand and planning an MVP. It makes
+  no AI API calls, needs no additional service keys, and does not provision
+  third-party infrastructure.
+- Plans adapt to product type, customer type, founder skills, stage, goals,
+  capacity, selected capabilities, and account/payment/data requirements.
+- Includes customer interview questions, suggested validation experiments,
+  MVP acceptance checks, technical components and starting data records,
+  first-customer experiments, and an editable task checklist.
+- An optional cost worksheet calculates break-even and runway using only
+  user-entered assumptions. It does not estimate revenue or verify demand.
+- Projects, evidence notes, and cost assumptions are saved in this browser,
+  scoped to the signed-in account. They do not sync across devices and are
+  removed if browser site data is cleared. Keep a JSON workspace backup.
+- Download a Markdown plan, import/export JSON backups, or use Print / save PDF
+  to export the full worksheet. Import merges new IDs without overwriting an
+  existing project. Unreadable data is preserved until the user chooses to clear it.
+- No database schema change is required for this module.
+
+Run `npm run test:startup` for offline validation, planning, calculation,
+backup, export and server-rendering regression checks.
 
 ---
 
@@ -123,7 +143,7 @@ src/
     dashboard/              # Authenticated app
       interview/            # AI Interview Coach (new, runner, results, list)
       resumes/              # Resume management
-      readiness|mentor|startup/   # Module placeholders
+      readiness|mentor|startup/   # Readiness, jobs and guided startup planning
     api/
       resume/upload/        # Parse + store a resume
       interview/            # create / [id]/answer / [id]/complete
@@ -144,11 +164,10 @@ prisma/schema.prisma
 
 ---
 
-## 🧭 Roadmap (next modules)
-- **Career Readiness Analyzer** — skill-gap scoring, learning roadmaps.
-- **AI Career Mentor** — resume-aware conversational guidance.
-- **AI Startup Builder** — multi-agent (business / finance / product / architect /
-  marketing) planning workspace.
+## 🧭 Possible next steps
+- Optional, source-backed startup research, clearly separate from the free worksheets.
+- Account-based workspace sync for users who need access across devices.
+- Reusable resume and interview improvement plans.
 
 ---
 

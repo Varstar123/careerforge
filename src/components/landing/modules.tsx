@@ -11,7 +11,7 @@ export function Modules() {
       <div className="mx-auto max-w-6xl px-4">
         <Reveal className="mx-auto max-w-2xl text-center">
           <span className="text-sm font-medium text-primary">
-            Four AI modules, one ecosystem
+            Four career tools, one workspace
           </span>
           <h2 className="mt-3 text-balance text-3xl font-semibold tracking-tight sm:text-4xl">
             Your personal mentor and AI co-founder

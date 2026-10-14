@@ -31,8 +31,8 @@ const features = [
   },
   {
     icon: Rocket,
-    title: "AI startup builder",
-    desc: "Turn an idea into a plan — business, finance, product, architecture and marketing agents working together.",
+    title: "Startup planning",
+    desc: "Test demand, define your MVP and follow a practical build roadmap. Keep evidence and costs in one free worksheet.",
   },
   {
     icon: LineChart,

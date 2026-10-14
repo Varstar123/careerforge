@@ -196,3 +196,29 @@
   background-color: color-mix(in oklch, var(--muted-foreground) 35%, transparent);
   border-radius: 9999px;
 }
+
+/* Print the complete startup worksheet, including sections closed on screen. */
+@media print {
+  body:has(.startup-document) { background: white; }
+  body:has(.startup-document) * { visibility: hidden; }
+  .startup-document, .startup-document * { visibility: visible !important; }
+  .startup-document {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    border: 0;
+    padding: 0 1rem;
+    color-scheme: light;
+    --background: #fff;
+    --card: #fff;
+    --card-foreground: #111;
+    --foreground: #111;
+    --muted-foreground: #444;
+    --primary: #333;
+    --secondary: #f5f5f5;
+    --border: #ddd;
+    --destructive: #900;
+  }
+  .startup-block { break-inside: avoid; }
+  .startup-document h2, .startup-document h3 { break-after: avoid; }
+}
