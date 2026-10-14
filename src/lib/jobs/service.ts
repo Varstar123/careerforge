@@ -1,4 +1,4 @@
-import type { JobListing, JobMatch, JobPreference } from "@prisma/client";
+import type { JobListing, JobPreference } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import {
   fetchJobsForQueryWithDiagnostics,
@@ -273,7 +273,17 @@ export async function getUserJobs(
           : {}),
       },
     },
-    include: { job: true },
+    // Cards do not use the full description. Avoid transferring potentially
+    // megabytes of listing text just to render a grid of summaries.
+    select: {
+      matchScore: true,
+      reason: true,
+      job: { select: {
+        id: true, source: true, title: true, company: true, location: true,
+        workMode: true, employmentType: true, skills: true, qualifications: true,
+        deadline: true, applyUrl: true, postedAt: true,
+      } },
+    },
     orderBy: { matchScore: "desc" },
     take: 60,
   });
@@ -281,7 +291,11 @@ export async function getUserJobs(
   return matches.map(toCardData);
 }
 
-function toCardData(m: JobMatch & { job: JobListing }): JobCardData {
+function toCardData(m: {
+  matchScore: number;
+  reason: string;
+  job: Pick<JobListing, "id" | "source" | "title" | "company" | "location" | "workMode" | "employmentType" | "skills" | "qualifications" | "deadline" | "applyUrl" | "postedAt">;
+}): JobCardData {
   return {
     id: m.job.id,
     source: m.job.source,

@@ -1,23 +1,15 @@
-import { Gauge } from "lucide-react";
-import { ComingSoon } from "@/components/dashboard/coming-soon";
-
+import { getOrCreateUser } from "@/lib/auth";
+import { getResumeOptions } from "@/lib/queries";
+import { ParsedResumeSchema } from "@/lib/types";
+import { PageHeader } from "@/components/dashboard/page-header";
+import { ReadinessClient } from "@/components/readiness/readiness-client";
 export const metadata = { title: "Career Readiness Analyzer" };
-
-export default function ReadinessPage() {
-  return (
-    <ComingSoon
-      icon={Gauge}
-      title="Career Readiness Analyzer"
-      tagline="Know exactly where you stand"
-      description="We'll benchmark your skills, resume quality and project portfolio against your target role, then surface the gaps that matter most."
-      bullets={[
-        "Skill-gap analysis vs. target role",
-        "Resume quality score & fixes",
-        "Recommended certifications",
-        "Personalized learning roadmap",
-        "Project ideas to boost employability",
-        "Industry-readiness scoring",
-      ]}
-    />
-  );
+export default async function ReadinessPage() {
+  const user = await getOrCreateUser();
+  if (!user) return null;
+  const resumes = await getResumeOptions(user.id);
+  return <div className="mx-auto max-w-5xl">
+    <PageHeader title="Career readiness" description="Turn your resume into a focused plan for the role you want." />
+    <ReadinessClient resumes={resumes.map(r => { const p = ParsedResumeSchema.parse(r.parsed ?? {}); return { id: r.id, fileName: r.fileName, seniority: p.seniority, roles: p.suggestedRoles }; })} />
+  </div>;
 }

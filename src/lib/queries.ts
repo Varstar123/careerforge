@@ -1,10 +1,17 @@
 import { prisma } from "@/lib/prisma";
 
-export async function getInterviewsForUser(userId: string) {
+export async function getInterviewsForUser(userId: string, take?: number) {
   return prisma.interview.findMany({
     where: { userId },
     orderBy: { createdAt: "desc" },
-    include: {
+    take,
+    select: {
+      id: true,
+      title: true,
+      targetRole: true,
+      status: true,
+      overallScore: true,
+      createdAt: true,
       resume: { select: { fileName: true } },
       _count: { select: { questions: true } },
     },
@@ -49,6 +56,23 @@ export async function getDashboardStats(userId: string) {
   };
 }
 
+/** Presence checks should never load the resume's text or parsed profile. */
+export async function hasResume(userId: string) {
+  const resume = await prisma.resume.findFirst({
+    where: { userId },
+    select: { id: true },
+  });
+  return resume !== null;
+}
+
+export async function getResumeOptions(userId: string) {
+  return prisma.resume.findMany({
+    where: { userId },
+    orderBy: [{ isPrimary: "desc" }, { createdAt: "desc" }],
+    select: { id: true, fileName: true, isPrimary: true, parsed: true },
+  });
+}
+
 export async function getPrimaryResume(userId: string) {
   return prisma.resume.findFirst({
     where: { userId },
@@ -60,7 +84,14 @@ export async function getResumesForUser(userId: string) {
   return prisma.resume.findMany({
     where: { userId },
     orderBy: { createdAt: "desc" },
-    include: { _count: { select: { interviews: true } } },
+    select: {
+      id: true,
+      fileName: true,
+      isPrimary: true,
+      createdAt: true,
+      parsed: true,
+      _count: { select: { interviews: true } },
+    },
   });
 }
 

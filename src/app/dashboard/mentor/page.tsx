@@ -1,5 +1,5 @@
 import { getOrCreateUser } from "@/lib/auth";
-import { getPrimaryResume } from "@/lib/queries";
+import { hasResume } from "@/lib/queries";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { JobsClient } from "@/components/jobs/jobs-client";
 
@@ -11,7 +11,7 @@ export default async function JobFinderPage() {
 
   // Only the cheap "has a resume?" check blocks the shell; the jobs themselves
   // are loaded client-side so the header + controls render instantly on nav.
-  const resume = await getPrimaryResume(user.id);
+  const resume = await hasResume(user.id);
 
   return (
     <div className="mx-auto max-w-6xl">

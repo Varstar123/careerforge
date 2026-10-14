@@ -1,5 +1,3 @@
-"use client";
-
 import { Reveal } from "@/components/landing/reveal";
 
 const stats = [

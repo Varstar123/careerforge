@@ -54,6 +54,7 @@ export function JobsClient({
   // Load matches once per session (client-side) so the shell renders instantly;
   // on return navigation the cached list is reused — no reload.
   React.useEffect(() => {
+    if (!hasResume) return;
     if (jobsSessionCache !== null) return; // already loaded this session
     let cancelled = false;
     (async () => {
@@ -271,9 +272,9 @@ export function JobsClient({
         <Button
           variant="gradient"
           onClick={() => run(jobs.length > 0)}
-          disabled={loading || preparing || initialLoading}
+          disabled={loading || initialLoading}
         >
-          {loading || preparing || initialLoading ? (
+          {loading || initialLoading ? (
             <>
               <Loader2 className="size-4 animate-spin" /> Finding…
             </>
@@ -287,15 +288,23 @@ export function JobsClient({
       </div>
 
       {/* Results */}
-      {initialLoading || preparing || loading ? (
+      {preparing && !initialLoading && !loading && (
+        <p role="status" className="mb-3 text-sm text-muted-foreground">
+          Checking for matches from your resume upload. You can start a search now.
+        </p>
+      )}
+      {loading && jobs.length > 0 && (
+        <p role="status" className="mb-3 flex items-center gap-2 text-sm text-muted-foreground">
+          <Loader2 className="size-4 animate-spin" /> Refreshing your matches…
+        </p>
+      )}
+      {initialLoading || (loading && jobs.length === 0) ? (
         <>
           <p className="mb-3 flex items-center gap-2 text-sm text-muted-foreground">
             <Loader2 className="size-4 animate-spin text-primary" />
             {initialLoading
               ? "Loading your matches…"
-              : preparing
-                ? "Finding jobs that match your resume…"
-                : "Matching the latest listings to your resume…"}
+              : "Matching the latest listings to your resume…"}
           </p>
           <JobSkeletonGrid />
         </>

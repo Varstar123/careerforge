@@ -12,7 +12,7 @@ import { getOrCreateUser } from "@/lib/auth";
 import {
   getDashboardStats,
   getInterviewsForUser,
-  getPrimaryResume,
+  hasResume,
 } from "@/lib/queries";
 import { MODULES } from "@/config/modules";
 import { Button } from "@/components/ui/button";
@@ -31,8 +31,8 @@ export default async function DashboardPage() {
 
   const [stats, interviews, resume] = await Promise.all([
     getDashboardStats(user.id),
-    getInterviewsForUser(user.id),
-    getPrimaryResume(user.id),
+    getInterviewsForUser(user.id, 5),
+    hasResume(user.id),
   ]);
 
   const recent = interviews.slice(0, 5);

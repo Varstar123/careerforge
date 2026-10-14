@@ -85,6 +85,14 @@ npm run dev
 ```
 Visit http://localhost:3000.
 
+### Deployment region
+
+`vercel.json` places server functions in Singapore (`sin1`), close to the
+project's configured Supabase database in AWS `ap-southeast-1`. Before deploying,
+confirm the production database uses that same region. If the database moves,
+update the function region to match it. Static assets continue to use Vercel's
+global CDN. Region changes take effect on a new deployment.
+
 ### 5. (Optional) Clerk → DB sync webhook
 In the Clerk dashboard add a webhook to `/api/webhooks/clerk` for the
 `user.created`, `user.updated`, `user.deleted` events and set

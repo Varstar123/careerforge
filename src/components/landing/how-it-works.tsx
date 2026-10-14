@@ -1,5 +1,3 @@
-"use client";
-
 import { Upload, Cpu, Target } from "lucide-react";
 import { Reveal } from "@/components/landing/reveal";
 

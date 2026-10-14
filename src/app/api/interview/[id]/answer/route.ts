@@ -28,7 +28,7 @@ export async function POST(
         interviewId: id,
         interview: { userId: user.id },
       },
-      include: { interview: true },
+      include: { interview: { include: { resume: { select: { rawText: true } } } } },
     });
     if (!question) return apiError("Question not found.", 404);
 
@@ -39,6 +39,7 @@ export async function POST(
       targetRole: question.interview.targetRole,
       seniority: question.interview.seniority,
       answer: body.text,
+      resumeText: question.interview.resume?.rawText,
     });
 
     // Persist answer + evaluation (idempotent per question).

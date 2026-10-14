@@ -176,6 +176,17 @@
 }
 
 /* Thin custom scrollbar */
+/* Text stays visible before hydration; optional motion never gates rendering. */
+@media (prefers-reduced-motion: no-preference) {
+  .cf-reveal {
+    animation: reveal-rise 0.45s ease-out both;
+  }
+  @keyframes reveal-rise {
+    from { transform: translateY(var(--reveal-y, 16px)); }
+    to { transform: translateY(0); }
+  }
+}
+
 * {
   scrollbar-width: thin;
   scrollbar-color: color-mix(in oklch, var(--muted-foreground) 40%, transparent) transparent;

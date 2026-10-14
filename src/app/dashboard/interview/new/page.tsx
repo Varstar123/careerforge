@@ -1,5 +1,5 @@
 import { getOrCreateUser } from "@/lib/auth";
-import { getResumesForUser } from "@/lib/queries";
+import { getResumeOptions } from "@/lib/queries";
 import { ParsedResumeSchema } from "@/lib/types";
 import { PageHeader } from "@/components/dashboard/page-header";
 import {
@@ -13,7 +13,7 @@ export default async function NewInterviewPage() {
   const user = await getOrCreateUser();
   if (!user) return null;
 
-  const resumes = await getResumesForUser(user.id);
+  const resumes = await getResumeOptions(user.id);
 
   const options: ResumeOption[] = resumes.map((r) => {
     const parsed = ParsedResumeSchema.parse(r.parsed ?? {});

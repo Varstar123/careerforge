@@ -1,6 +1,3 @@
-"use client";
-
-import { motion } from "framer-motion";
 import { CheckCircle2, Sparkles, TrendingUp } from "lucide-react";
 
 const metrics = [
@@ -62,19 +59,16 @@ export function InterviewPreview() {
                 </span>
               </div>
               <div className="space-y-2.5">
-                {metrics.map((m, i) => (
+                {metrics.map((m) => (
                   <div key={m.label}>
                     <div className="mb-1 flex justify-between text-[11px] text-muted-foreground">
                       <span>{m.label}</span>
                       <span>{m.value}</span>
                     </div>
                     <div className="h-1.5 w-full overflow-hidden rounded-full bg-secondary">
-                      <motion.div
+                      <div
                         className="h-full rounded-full bg-primary"
-                        initial={{ width: 0 }}
-                        whileInView={{ width: `${m.value}%` }}
-                        viewport={{ once: true }}
-                        transition={{ duration: 1, delay: 0.3 + i * 0.15 }}
+                        style={{ width: `${m.value}%` }}
                       />
                     </div>
                   </div>

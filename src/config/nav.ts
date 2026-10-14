@@ -20,6 +20,6 @@ export const DASHBOARD_NAV: NavItem[] = [
   { label: "Interview Coach", href: "/dashboard/interview", icon: MessagesSquare },
   { label: "Resumes", href: "/dashboard/resumes", icon: FileText },
   { label: "Job Finder", href: "/dashboard/mentor", icon: Briefcase },
-  { label: "Readiness", href: "/dashboard/readiness", icon: Gauge, badge: "soon" },
+  { label: "Readiness", href: "/dashboard/readiness", icon: Gauge },
   { label: "Startup Builder", href: "/dashboard/startup", icon: Rocket, badge: "soon" },
 ];

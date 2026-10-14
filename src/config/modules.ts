@@ -37,7 +37,7 @@ export const MODULES: ModuleDef[] = [
       "Benchmark your skills against your target role, surface gaps and get a personalized learning roadmap.",
     href: "/dashboard/readiness",
     icon: Gauge,
-    status: "soon",
+    status: "live",
     accent: "text-chart-2",
   },
   {

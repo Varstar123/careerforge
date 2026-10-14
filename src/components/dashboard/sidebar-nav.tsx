@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useState } from "react";
 import { usePathname } from "next/navigation";
 import { DASHBOARD_NAV } from "@/config/nav";
 import { cn } from "@/lib/utils";
@@ -13,6 +14,9 @@ export function SidebarNav({
   collapsed?: boolean;
 }) {
   const pathname = usePathname();
+  // Warm the full page on intent, rather than querying every dashboard page
+  // as soon as the sidebar appears. Default prefetch still warms loading UI.
+  const [warmHref, setWarmHref] = useState<string | null>(null);
 
   return (
     <nav className="flex flex-col gap-1">
@@ -25,6 +29,9 @@ export function SidebarNav({
           <Link
             key={item.href}
             href={item.href}
+            prefetch={!active && warmHref === item.href ? true : null}
+            onMouseEnter={() => setWarmHref(item.href)}
+            onFocus={() => setWarmHref(item.href)}
             onClick={onNavigate}
             title={collapsed ? item.label : undefined}
             aria-label={collapsed ? item.label : undefined}

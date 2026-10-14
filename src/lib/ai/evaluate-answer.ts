@@ -9,6 +9,7 @@ const JSON_SHAPE = `{
 }`;
 
 interface EvaluateOptions {
+  resumeText?: string;
   questionText: string;
   questionType: string;
   category: string;
